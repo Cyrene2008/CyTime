@@ -32,6 +32,7 @@
         "height": 720,
         "minWidth": 640,
         "minHeight": 480,
+        "center": true,
         "resizable": true,
         "decorations": false,
         "shadow": true,

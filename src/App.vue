@@ -9,6 +9,7 @@ import { useWeatherStore } from './stores/weather'
 import { useQuotesStore } from './stores/quotes'
 import { dayProgress, formatDuration } from './utils/time'
 import { parseCountdownTarget } from './utils/time'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { desktopWindowAction, fetchNetworkTime, getDesktopStartupArgs, initDesktopBridge, isDesktop, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
 
 const route = useRoute()
@@ -89,6 +90,7 @@ async function toggleFullscreen() {
 
 function minimizeWindow() { desktopWindowAction('minimize') }
 function closeWindow() { desktopWindowAction('close') }
+function startDrag(event) { if (isDesktop()) { event.preventDefault(); getCurrentWindow().startDragging().catch(() => {}) } }
 function maximizeWindow() {
   if (desktopMini.value) {
     desktopMini.value = false
@@ -347,7 +349,7 @@ onUnmounted(() => {
 
 <template>
   <div class="app-root" :class="{ 'is-desktop': desktopAvailable }">
-    <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" data-tauri-drag-region><span>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
+    <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" @mousedown="startDrag"><span>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
     <div class="app-shell" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini }">
     <header v-if="!isSettings && !settingsStore.examModeActive" class="status-dock" aria-label="状态信息">
       <div v-if="settingsStore.settings.showWeather" class="status-weather"><strong>{{ weatherTemperature }}°</strong><FluentIcon icon="weather-partly-cloudy-day-20-regular" :width="18" /><span>{{ weatherStatus }}</span></div>

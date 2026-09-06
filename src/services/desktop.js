@@ -27,13 +27,20 @@ export async function probeDesktop() {
 }
 
 export async function fetchJson(url, signal) {
-  if (!isTauri()) {
-    const response = await fetch(url, { signal })
-    if (!response.ok) throw new Error(`Request failed: ${response.status}`)
-    return response.json()
+  if (isDesktop()) {
+    try {
+      if (signal?.aborted) throw new DOMException('The request was aborted', 'AbortError')
+      return await invoke('desktop_fetch_json', { url })
+    } catch (invokeError) {
+      if (invokeError?.name === 'AbortError') throw invokeError
+      const response = await fetch(url, { signal })
+      if (!response.ok) throw new Error(`Request failed: ${response.status}`)
+      return response.json()
+    }
   }
-  if (signal?.aborted) throw new DOMException('The request was aborted', 'AbortError')
-  return invoke('desktop_fetch_json', { url })
+  const response = await fetch(url, { signal })
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`)
+  return response.json()
 }
 
 export async function fetchNetworkTime() {
