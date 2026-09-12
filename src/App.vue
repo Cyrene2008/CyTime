@@ -461,7 +461,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-root" :class="{ 'is-desktop': desktopAvailable }">
+  <div class="app-root" :class="{ 'is-desktop': desktopAvailable, 'titlebar-hidden': desktopAvailable && fullscreenActive }">
     <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" @mousedown="startDrag"><span>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
     <div class="app-shell" ref="shellRef" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, [`window-mode-${desktopWindowMode}`]: desktopAvailable }">
     <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息">
