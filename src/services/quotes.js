@@ -1,7 +1,7 @@
 import { fetchJson } from './desktop'
 
 export const quoteSourceOptions = {
-  cytime: { label: 'CyTime 语录 API', language: '中文', description: '本站维护的安全语录服务', url: 'https://time.cyrene.hk/api/v1/quote?format=json' },
+  cytime: { label: 'CyQuote 昔言', language: '中文', description: '由Cyrene2008维护并提供的内容安全的语录库♪', url: 'https://time.cyrene.hk/api/v1/quote?format=json' },
   hitokoto: { label: '一言', language: '中文', description: '综合短句与名人语录', url: 'https://v1.hitokoto.cn/?encode=json' },
   jinrishici: { label: '今日诗词', language: '中文', description: '古诗词与作者出处', url: 'https://v1.jinrishici.com/all.json' },
   poetry: { label: '诗泉', language: '中文', description: '随机古诗词与朝代作者', url: 'https://poetry.palemoky.com/api/poems/random?lang=zh-Hans' },

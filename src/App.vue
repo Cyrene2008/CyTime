@@ -9,6 +9,7 @@ import { useWeatherStore } from './stores/weather'
 import { useQuotesStore } from './stores/quotes'
 import { dayProgress, formatDuration } from './utils/time'
 import { parseCountdownTarget } from './utils/time'
+import { FILING_NAME, FILING_URL } from './config/branding'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { desktopWindowAction, fetchNetworkTime, getDesktopStartupArgs, initDesktopBridge, isDesktop, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
 
@@ -21,6 +22,8 @@ const weatherStore = useWeatherStore()
 const quotesStore = useQuotesStore()
 const controlsHidden = ref(false)
 const settingsOpen = ref(false)
+const appVersion = __APP_VERSION__
+const buildId = __BUILD_ID__
 const desktopAvailable = ref(false)
 const desktopMini = ref(false)
 const desktopWindowMode = ref('normal')
@@ -38,6 +41,9 @@ const weatherStatus = computed(() => weatherStore.current ? weatherStore.current
 const taskNotice = ref('')
 const taskDock = ref(null)
 const taskOverflow = ref(false)
+const shellRef = ref(null)
+const statusDockRef = ref(null)
+const navRef = ref(null)
 let weatherTimer
 let controlsTimer
 let noticeTimer
@@ -45,8 +51,10 @@ let purePromptTimer
 let purePromptCountdownTimer
 let showControlsHandler
 let taskResizeObserver
+let safeAreaObserver
 let syncAfterVisibilityChange
 let stopTaskWatch
+let stopSafeAreaWatch
 let stopDesktopBridge
 let timeSyncTimer
 let stopRightClick
@@ -66,6 +74,23 @@ function updateTaskOverflow() {
   const cardWidth = window.matchMedia('(max-width: 620px)').matches ? 145 : 168
   const gap = 8
   taskOverflow.value = activeTaskCount.value * cardWidth + Math.max(0, activeTaskCount.value - 1) * gap > element.clientWidth
+}
+
+function syncContentSafeTop() {
+  const shell = shellRef.value
+  if (!shell) return
+  const shellRect = shell.getBoundingClientRect()
+  const scale = shell.offsetWidth ? shellRect.width / shell.offsetWidth : 1
+  const bottomOf = element => element ? (element.getBoundingClientRect().bottom - shellRect.top) / scale : 0
+  const safeTop = Math.max(bottomOf(statusDockRef.value), bottomOf(navRef.value))
+  shell.style.setProperty('--content-safe-top', `${Math.max(0, Math.ceil(safeTop + 10))}px`)
+  shell.style.setProperty('--nav-safe-top', `${Math.ceil(bottomOf(statusDockRef.value) + 12)}px`)
+}
+
+function observeSafeAreas() {
+  safeAreaObserver?.disconnect()
+  for (const element of [statusDockRef.value, navRef.value]) if (element) safeAreaObserver?.observe(element)
+  syncContentSafeTop()
 }
 function countdownRemaining(task) {
   return task?.status === 'paused' ? Math.ceil(task.pausedRemaining / 1000) : Math.max(0, Math.ceil((task.targetAt - timeStore.now) / 1000))
@@ -328,6 +353,13 @@ onMounted(async () => {
     if (taskDock.value) taskResizeObserver?.observe(taskDock.value)
     updateTaskOverflow()
   })
+  safeAreaObserver = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(syncContentSafeTop)
+  window.addEventListener('resize', syncContentSafeTop)
+  stopSafeAreaWatch = watch([isSettings, () => settingsStore.examModeActive, () => settingsStore.settings.statusDockScale, () => settingsStore.settings.statusDockOffsetY, () => settingsStore.settings.uiScale], async () => {
+    await nextTick()
+    observeSafeAreas()
+  })
+  nextTick(observeSafeAreas)
   syncWakeLock()
   window.setTimeout(schedulePurePrompt, 550)
 })
@@ -341,8 +373,11 @@ onUnmounted(() => {
   window.removeEventListener('cytime:countdown-complete', onCountdownComplete)
   document.removeEventListener('visibilitychange', syncAfterVisibilityChange)
   window.removeEventListener('focus', syncAfterVisibilityChange)
+  window.removeEventListener('resize', syncContentSafeTop)
   taskResizeObserver?.disconnect()
+  safeAreaObserver?.disconnect()
   stopTaskWatch?.()
+  stopSafeAreaWatch?.()
   stopDesktopBridge?.()
   window.clearTimeout(noticeTimer)
   closePurePrompt()
@@ -360,13 +395,13 @@ onUnmounted(() => {
 <template>
   <div class="app-root" :class="{ 'is-desktop': desktopAvailable }">
     <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" @mousedown="startDrag"><span>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
-    <div class="app-shell" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, [`window-mode-${desktopWindowMode}`]: desktopAvailable }">
-    <header v-if="!isSettings && !settingsStore.examModeActive" class="status-dock" aria-label="状态信息">
+    <div class="app-shell" ref="shellRef" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, [`window-mode-${desktopWindowMode}`]: desktopAvailable }">
+    <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息">
       <div v-if="settingsStore.settings.showWeather" class="status-weather"><strong>{{ weatherTemperature }}°</strong><FluentIcon icon="weather-partly-cloudy-day-20-regular" :width="18" /><span>{{ weatherStatus }}</span></div>
       <div v-if="settingsStore.settings.showDayProgress" class="status-progress"><span>今日进度</span><div class="status-progress-bar"><i :style="{ width: `${progress}%` }"></i></div><strong>{{ progress.toFixed(0) }}%</strong></div>
       <div v-if="settingsStore.settings.showImportantDays" class="status-exam"><span>距离 {{ featuredDay?.name || '重要日' }}仅</span><strong>{{ featuredDay ? Math.max(0, Math.ceil((new Date(`${featuredDay.date}T00:00:00`).getTime() - timeStore.now) / 86400000)) : examRemaining }}</strong><span>天</span></div>
     </header>
-    <nav v-if="!isSettings" class="mode-nav" aria-label="模式切换">
+    <nav v-if="!isSettings" ref="navRef" class="mode-nav" aria-label="模式切换">
       <RouterLink v-for="item in navItems" :key="item.path" :to="item.path" :class="{ active: route.path === item.path }"><FluentIcon :icon="item.icon" :width="17" /><span>{{ item.label }}</span></RouterLink>
     </nav>
     <main class="clock-stage" :class="{ 'is-settings-background': isSettings }"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><component :is="Component" /></Transition></RouterView></main>
@@ -375,7 +410,10 @@ onUnmounted(() => {
         <button type="button" class="footer-action footer-settings" aria-label="设置" @click="openSettings"><FluentIcon icon="settings-20-regular" :width="19" /></button>
         <div class="footer-center-actions"><button type="button" class="footer-action" :aria-label="fullscreenActive ? '退出全屏' : '全屏'" @click="toggleFullscreen"><FluentIcon :icon="fullscreenActive ? 'full-screen-minimize-20-regular' : 'full-screen-maximize-20-regular'" :width="19" /><span>{{ fullscreenActive ? '退出全屏' : '全屏' }}</span></button><button type="button" class="footer-action" :aria-label="settingsStore.examModeActive ? '退出纯净模式' : '纯净/考试模式'" @click="settingsStore.examModeActive ? exitExamMode() : schedulePurePrompt()"><FluentIcon :icon="settingsStore.examModeActive ? 'eye-20-filled' : 'eye-off-20-regular'" :width="19" /><span>{{ settingsStore.examModeActive ? '退出纯净' : '纯净模式' }}</span></button></div>
       </footer>
-      <a class="app-signature" href="https://github.com/Cyrene2008/CyTime" target="_blank" rel="noreferrer">v26.0.1 by Cyrene2008</a>
+      <div class="app-meta">
+        <a class="app-signature" href="https://github.com/Cyrene2008/CyTime" target="_blank" rel="noreferrer">v{{ appVersion }}<span v-if="buildId"> (build {{ buildId }})</span> by Cyrene2008</a>
+        <a v-if="FILING_NAME" class="app-filing" :href="FILING_URL" target="_blank" rel="noreferrer">{{ FILING_NAME }}</a>
+      </div>
       <div v-if="activeTaskCount && !settingsStore.examModeActive" ref="taskDock" class="task-docks" :class="{ 'is-marquee': taskOverflow }"><div class="task-docks-track"><template v-for="copy in taskOverflow ? 2 : 1" :key="copy"><RouterLink v-for="task in timeStore.activeCountdowns" :key="`${copy}-${task.id}`" to="/countdown" class="task-widget task-widget-countdown" @click="timeStore.selectCountdown(task)"><span class="task-dot pink"></span><span>{{ task.label }}</span><strong>{{ formatDuration(countdownRemaining(task)) }}</strong></RouterLink><RouterLink v-for="task in timeStore.activeTimers" :key="`${copy}-${task.id}-timer`" to="/timer" class="task-widget task-widget-timer" @click="timeStore.selectTimer(task)"><span class="task-dot green"></span><span>{{ task.label }}</span><strong>{{ formatDuration(timeStore.timerElapsed(task)) }}</strong></RouterLink></template></div></div>
       <div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div>
       <div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净考试模式提示"><div class="pure-prompt-card"><h2>是否进入纯净模式(考试模式)</h2><p>该模式下仅显示当前时间，隐藏其他内容。可以点击界面上的退出纯净/考试模式按钮退出，也可点击进入纯净/考试模式按钮进入。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">不了 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div>

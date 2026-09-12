@@ -1,9 +1,15 @@
 import { fileURLToPath, URL } from 'node:url'
 import { readFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { parseJsonc } from './api/data/jsonc.js'
+
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+const buildId = (() => {
+  try { return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() } catch { return '' }
+})()
 
 function jsoncPlugin() {
   const suffix = '.jsonc'
@@ -22,6 +28,10 @@ function jsoncPlugin() {
 }
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_ID__: JSON.stringify(buildId)
+  },
   server: {
     proxy: {
       '/api/xiaomi-weather': {

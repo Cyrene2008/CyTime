@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useTimeStore } from '../stores/time'
 import { parseCountdownTarget } from '../utils/time'
+import { useDigitBox } from '../composables/useDigitBox'
 
 const timeStore = useTimeStore()
 const label = ref('')
@@ -22,6 +23,8 @@ const remaining = computed(() => task.value ? Math.max(0, task.value.status === 
 const isWarning = computed(() => Boolean(task.value?.status === 'running' && remaining.value > 0 && remaining.value <= 5))
 const isFinished = computed(() => task.value?.status === 'completed')
 const display = computed(() => formatDuration(task.value ? remaining.value : 0))
+const clockRef = ref(null)
+useDigitBox(clockRef)
 
 function formatDuration(totalSeconds) {
   const value = Math.max(0, Math.floor(totalSeconds))
@@ -69,7 +72,7 @@ watch(settingsOpen, open => { if (open) window.__cytimeShowControls?.() })
 <template>
   <section class="focus-view">
     <div class="focus-status">{{ task?.status === 'paused' ? '已暂停' : task?.label || '准备好开始一段倒计时' }}</div>
-    <time class="focus-clock" :class="{ muted: !task, warning: isWarning }" role="button" tabindex="0" aria-label="打开倒计时设置" @click="openSettings" @keydown.enter.prevent="openSettings" @keydown.space.prevent="openSettings">{{ display }}</time>
+    <time ref="clockRef" class="focus-clock" :class="{ muted: !task, warning: isWarning }" role="button" tabindex="0" aria-label="打开倒计时设置" @click="openSettings" @keydown.enter.prevent="openSettings" @keydown.space.prevent="openSettings"><template v-for="(char, index) in display.split('')" :key="index"><b v-if="char === ':'">:</b><span v-else class="hero-digit">{{ char }}</span></template></time>
     <p v-if="isFinished" class="focus-caption finished-caption" role="status">时间到</p>
     <p v-else-if="isWarning" class="focus-caption warning-caption" role="status">{{ Math.ceil(remaining) }} 秒后结束</p>
     <div class="focus-controls">

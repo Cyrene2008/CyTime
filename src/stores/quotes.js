@@ -13,6 +13,20 @@ export const useQuotesStore = defineStore('quotes', () => {
   let rotationTimer
   let requestController
 
+  function resolveApiCategories(settings) {
+    const selected = Array.isArray(settings.quoteApiCategories) ? settings.quoteApiCategories.filter(Boolean) : []
+    if (!settings.quoteApiCategoryWeightsEnabled || selected.length < 2) return selected
+    const weights = selected.map(category => Math.max(0, Number(settings.quoteApiCategoryWeights?.[category] ?? 1)))
+    const total = weights.reduce((sum, weight) => sum + weight, 0)
+    if (!total) return selected
+    let target = Math.random() * total
+    for (let index = 0; index < selected.length; index += 1) {
+      target -= weights[index]
+      if (target < 0) return [selected[index]]
+    }
+    return [selected[selected.length - 1]]
+  }
+
   async function refresh() {
     const settings = settingsStore.settings
     const localSources = [
@@ -32,9 +46,10 @@ export const useQuotesStore = defineStore('quotes', () => {
       let target = Math.random() * totalWeight
       const selected = available.find(([, option]) => (target -= Math.max(0, Number(option.weight) || 0)) < 0)?.[0]
       const ordered = [selected, ...available.map(([id]) => id).filter(id => id !== selected)]
+      const apiCategories = resolveApiCategories(settings)
       for (const sourceId of ordered) {
         try {
-          const result = await fetchCloudQuote(sourceId, requestController.signal, settings.quoteApiCategories || [])
+          const result = await fetchCloudQuote(sourceId, requestController.signal, apiCategories)
           current.value = result.text
           source.value = 'cloud'
           metadata.value = { source: 'cloud', sourceName: result.sourceName, author: result.author, work: result.work }

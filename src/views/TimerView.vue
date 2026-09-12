@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useTimeStore } from '../stores/time'
+import { useDigitBox } from '../composables/useDigitBox'
 
 const timeStore = useTimeStore()
 const label = ref('')
@@ -16,6 +17,8 @@ const display = computed(() => {
   const seconds = Math.max(0, Math.floor(task.value ? timeStore.timerElapsed(task.value) : 0))
   return [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), seconds % 60].map(value => String(value).padStart(2, '0')).join(':')
 })
+const clockRef = ref(null)
+useDigitBox(clockRef)
 
 function startTimer() {
   if (window.__cytimeMiniMode && task.value) return
@@ -29,7 +32,7 @@ function removeTask() { if (task.value) timeStore.removeTimer(task.value) }
 <template>
   <section class="focus-view">
     <div class="focus-status">{{ task?.status === 'paused' ? '已暂停' : task?.label || '准备好记录一段时间' }}</div>
-    <time class="focus-clock" :class="{ muted: !task }" role="button" tabindex="0" aria-label="打开计时器设置" @click="settingsOpen = true" @keydown.enter.prevent="settingsOpen = true" @keydown.space.prevent="settingsOpen = true">{{ display }}</time>
+    <time ref="clockRef" class="focus-clock" :class="{ muted: !task }" role="button" tabindex="0" aria-label="打开计时器设置" @click="settingsOpen = true" @keydown.enter.prevent="settingsOpen = true" @keydown.space.prevent="settingsOpen = true"><template v-for="(char, index) in display.split('')" :key="index"><b v-if="char === ':'">:</b><span v-else class="hero-digit">{{ char }}</span></template></time>
     <p v-if="task" class="focus-caption">{{ task.mode === 'absolute' ? '绝对计时' : '运行时计时' }}</p>
     <div class="focus-controls">
       <button type="button" class="focus-control primary" @click="settingsOpen = true"><FluentIcon icon="add-20-regular" :width="17" /> 新建</button>

@@ -32,7 +32,9 @@ export const defaultSettings = {
   quoteLocalWeight: 3,
   quoteCloudWeight: 1,
   quoteCloudSource: 'hitokoto',
-  quoteApiCategories: ['崩铁'],
+  quoteApiCategories: [],
+  quoteApiCategoryWeightsEnabled: false,
+  quoteApiCategoryWeights: {},
   quoteLocalSources: {
     daily: { enabled: true, weight: 3 },
     flameJourney: { enabled: true, weight: 2 },
@@ -56,6 +58,10 @@ export const defaultSettings = {
   clockFontScale: 11,
   dateFontSize: 15,
   quoteFontSize: 14,
+  statusDockScale: 100,
+  statusDockOffsetY: 0,
+  homeworkWidth: 300,
+  homeworkOffsetX: 0,
   uiScale: 100,
   timeSyncEnabled: false,
   timeSyncInterval: 60
@@ -88,6 +94,10 @@ export function applyTheme(settings) {
   root.style.setProperty('--clock-font-scale', settings.clockFontScale)
   root.style.setProperty('--date-font-size', `${settings.dateFontSize}px`)
   root.style.setProperty('--quote-font-size', `${settings.quoteFontSize}px`)
+  root.style.setProperty('--status-dock-scale', String(Math.max(60, Math.min(150, Number(settings.statusDockScale) || 100)) / 100))
+  root.style.setProperty('--status-dock-offset-y', `${Math.max(-16, Math.min(240, Number(settings.statusDockOffsetY) || 0))}px`)
+  root.style.setProperty('--homework-width', `${Math.max(200, Math.min(520, Number(settings.homeworkWidth) || 300))}px`)
+  root.style.setProperty('--homework-offset-x', `${Math.max(0, Math.min(240, Number(settings.homeworkOffsetX) || 0))}px`)
   root.style.setProperty('--ui-scale', String(Math.max(50, Math.min(200, settings.uiScale)) / 100))
 }
 

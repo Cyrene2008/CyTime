@@ -6,6 +6,7 @@ node_modules/
 # Build
 dist/
 dist-ssr/
+api/landing-dist/
 *.local
 
 # Bun

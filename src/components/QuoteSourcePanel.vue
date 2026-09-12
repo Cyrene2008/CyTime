@@ -5,6 +5,8 @@ defineProps({
   draft: { type: Object, required: true }
 })
 
+const emit = defineEmits(['configure'])
+
 const sources = Object.entries(quoteSourceOptions).map(([id, option]) => ({ id, ...option }))
 </script>
 
@@ -16,6 +18,7 @@ const sources = Object.entries(quoteSourceOptions).map(([id, option]) => ({ id, 
       <div v-for="source in sources" :key="source.id" class="quote-source-row">
         <button type="button" class="switch" :class="{ on: draft.quoteSources[source.id]?.enabled }" :aria-pressed="draft.quoteSources[source.id]?.enabled" :aria-label="`启用${source.label}`" @click="draft.quoteSources[source.id].enabled = !draft.quoteSources[source.id].enabled"><i></i></button>
         <div class="quote-source-copy"><strong>{{ source.label }}</strong><small>{{ source.description }}</small><span class="source-badge">在线 · {{ source.language }} · 已{{ draft.quoteSources[source.id]?.enabled ? '启用' : '停用' }}</span></div>
+        <button v-if="source.id === 'cytime'" type="button" class="source-config-button" aria-label="配置 CyQuote 昔言分类" @click="emit('configure', source.id)"><FluentIcon icon="settings-16-regular" :width="15" /></button>
         <label class="quote-source-weight">权重<input v-model.number="draft.quoteSources[source.id].weight" type="number" min="0" max="9999" /></label>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { fetchJson, isDesktop } from './desktop'
 
-const WEATHER_ROOT = import.meta.env.DEV && !isDesktop() ? '/api/xiaomi-weather/wtr-v3' : 'https://weatherapi.market.xiaomi.com/wtr-v3'
+const WEATHER_ROOT = isDesktop() ? 'https://weatherapi.market.xiaomi.com/wtr-v3' : '/api/xiaomi-weather/wtr-v3'
 const WEATHER_URL = `${WEATHER_ROOT}/weather/all`
 const APP_KEY = 'weather20151024'
 const SIGN = 'zUFJoAR2ZVrDy1vF3D07'
