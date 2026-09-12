@@ -6,6 +6,8 @@ use std::process::Command;
 use std::time::Duration;
 use std::thread;
 use std::sync::{Arc, Mutex};
+use std::fs;
+use std::path::PathBuf;
 use serde_json::Value;
 use tauri::{include_image, AppHandle, Emitter, LogicalSize, Manager, Size, WindowEvent};
 use tauri::menu::{Menu, MenuItem};
@@ -13,6 +15,34 @@ use tauri::tray::TrayIconBuilder;
 use tauri_plugin_deep_link::DeepLinkExt;
 
 struct PendingUris(Arc<Mutex<Vec<String>>>);
+
+fn storage_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let executable_dir = std::env::current_exe().ok().and_then(|path| path.parent().map(PathBuf::from)).map(|path| path.join("data").join("cytime-data.json"));
+    let app_data = app.path().app_data_dir().map_err(|error| error.to_string())?.join("cytime-data.json");
+    if let Some(path) = executable_dir {
+        if let Some(parent) = path.parent() {
+            if fs::create_dir_all(parent).is_ok() {
+                let writable = if path.exists() { fs::OpenOptions::new().append(true).open(&path).is_ok() } else {
+                    let probe = parent.join(".cytime-write-test");
+                    let result = fs::write(&probe, b"ok").is_ok();
+                    let _ = fs::remove_file(probe);
+                    result
+                };
+                if writable {
+                return Ok(path);
+                }
+            }
+        }
+    }
+    if let Some(parent) = app_data.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+    Ok(app_data)
+}
+
+fn write_json_file(path: &PathBuf, value: &Value) -> Result<(), String> {
+    let temporary = path.with_extension("json.tmp");
+    fs::write(&temporary, serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
+    fs::rename(&temporary, path).map_err(|error| error.to_string())
+}
 
 #[tauri::command]
 fn application_platform() -> &'static str {
@@ -29,6 +59,50 @@ fn desktop_pending_uris(state: tauri::State<'_, PendingUris>) -> Vec<String> {
     state.0.lock().map(|mut pending| std::mem::take(&mut *pending)).unwrap_or_default()
 }
 
+static STORAGE_LOCK: Mutex<()> = Mutex::new(());
+
+fn read_storage_inner(app: &AppHandle) -> Result<Value, String> {
+    let path = storage_path(app)?;
+    if !path.exists() { return Ok(Value::Object(serde_json::Map::new())); }
+    serde_json::from_slice(&fs::read(path).map_err(|error| error.to_string())?).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn storage_read_all(app: AppHandle) -> Result<Value, String> {
+    let _guard = STORAGE_LOCK.lock().map_err(|error| error.to_string())?;
+    read_storage_inner(&app)
+}
+
+#[tauri::command]
+fn storage_write(app: AppHandle, key: String, value: Value) -> Result<(), String> {
+    let _guard = STORAGE_LOCK.lock().map_err(|error| error.to_string())?;
+    let path = storage_path(&app)?;
+    let mut all = read_storage_inner(&app)?;
+    all.as_object_mut().ok_or_else(|| "storage is not an object".to_string())?.insert(key, value);
+    write_json_file(&path, &all)
+}
+
+#[tauri::command]
+fn desktop_write_file(path: String, content: String) -> Result<(), String> {
+    fs::write(path, content).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn desktop_check_update() -> Result<Value, String> {
+    desktop_fetch_json("https://api.github.com/repos/Cyrene2008/CyTime/releases/latest".to_string()).await
+}
+
+#[tauri::command]
+async fn desktop_download_update(url: String) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|error| error.to_string())?;
+    if parsed.scheme() != "https" || parsed.host_str() != Some("github.com") { return Err("update URL is not allowed".to_string()); }
+    let bytes = reqwest::Client::builder().timeout(Duration::from_secs(120)).build().map_err(|error| error.to_string())?.get(parsed).send().await.map_err(|error| error.to_string())?.error_for_status().map_err(|error| error.to_string())?.bytes().await.map_err(|error| error.to_string())?;
+    let path = std::env::temp_dir().join("CyTime-update.exe");
+    fs::write(&path, bytes).map_err(|error| error.to_string())?;
+    Command::new(&path).spawn().map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn desktop_set_uri_registration(app: AppHandle, enabled: bool) -> Result<bool, String> {
     if enabled { app.deep_link().register("cytime").map_err(|error| error.to_string())?; }
@@ -37,16 +111,16 @@ fn desktop_set_uri_registration(app: AppHandle, enabled: bool) -> Result<bool, S
 }
 
 #[tauri::command]
-fn desktop_window_mode(app: AppHandle, mode: String) -> Result<(), String> {
+fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Result<(), String> {
     let window = app.get_webview_window("main").ok_or_else(|| "main window unavailable".to_string())?;
     match mode.as_str() {
         "mini" => {
             window.set_resizable(false).map_err(|error| error.to_string())?;
-            window.set_min_size(Some(Size::Logical(LogicalSize::new(640.0, 480.0)))).map_err(|error| error.to_string())?;
-            window.set_max_size(Some(Size::Logical(LogicalSize::new(640.0, 480.0)))).map_err(|error| error.to_string())?;
+            window.set_min_size(Some(Size::Logical(LogicalSize::new(1280.0, 960.0)))).map_err(|error| error.to_string())?;
+            window.set_max_size(Some(Size::Logical(LogicalSize::new(1280.0, 960.0)))).map_err(|error| error.to_string())?;
             window.set_fullscreen(false).map_err(|error| error.to_string())?;
             window.unmaximize().map_err(|error| error.to_string())?;
-            window.set_size(Size::Logical(LogicalSize::new(640.0, 480.0))).map_err(|error| error.to_string())?;
+            window.set_size(Size::Logical(LogicalSize::new(1280.0, 960.0))).map_err(|error| error.to_string())?;
         }
         "normal" => {
             window.set_resizable(true).map_err(|error| error.to_string())?;
@@ -54,7 +128,7 @@ fn desktop_window_mode(app: AppHandle, mode: String) -> Result<(), String> {
             window.set_max_size(None::<Size>).map_err(|error| error.to_string())?;
             window.set_fullscreen(false).map_err(|error| error.to_string())?;
             window.unmaximize().map_err(|error| error.to_string())?;
-            window.set_size(Size::Logical(LogicalSize::new(1280.0, 720.0))).map_err(|error| error.to_string())?;
+            window.set_size(Size::Logical(LogicalSize::new(1600.0, 1000.0))).map_err(|error| error.to_string())?;
         }
         "max" => {
             window.set_resizable(true).map_err(|error| error.to_string())?;
@@ -71,8 +145,11 @@ fn desktop_window_mode(app: AppHandle, mode: String) -> Result<(), String> {
         }
         _ => return Err("unknown window mode".to_string())
     }
-    window.show().map_err(|error| error.to_string())?;
-    window.set_focus().map_err(|error| error.to_string())
+    if reveal.unwrap_or(true) {
+        window.show().map_err(|error| error.to_string())?;
+        window.set_focus().map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -138,6 +215,8 @@ async fn desktop_fetch_json(url: String) -> Result<Value, String> {
         "api.xygeng.cn",
         "api.adviceslip.com",
         "worldtimeapi.org",
+        "time.cyrene.hk",
+        "api.github.com",
     ];
     if parsed.scheme() != "https" || !parsed.host_str().is_some_and(|host| allowed_hosts.contains(&host)) {
         return Err("network host is not allowed".to_string());
@@ -201,8 +280,9 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![application_platform, desktop_startup_args, desktop_pending_uris, desktop_set_uri_registration, desktop_window_mode, desktop_set_autostart, desktop_fetch_json, desktop_fetch_network_time, desktop_window_action])
+        .invoke_handler(tauri::generate_handler![application_platform, desktop_startup_args, desktop_pending_uris, storage_read_all, storage_write, desktop_write_file, desktop_check_update, desktop_download_update, desktop_set_uri_registration, desktop_window_mode, desktop_set_autostart, desktop_fetch_json, desktop_fetch_network_time, desktop_window_action])
         .setup(move |app| {
             if let Some(listener) = activation_listener {
                 let activation_app = app.handle().clone();

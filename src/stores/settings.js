@@ -1,5 +1,6 @@
 import { reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
+import { persistDesktopValue } from '../services/desktop'
 
 const STORAGE_KEY = 'cytime.settings.v2'
 
@@ -31,17 +32,19 @@ export const defaultSettings = {
   quoteLocalWeight: 3,
   quoteCloudWeight: 1,
   quoteCloudSource: 'hitokoto',
+  quoteApiCategories: ['崩铁'],
   quoteLocalSources: {
     daily: { enabled: true, weight: 3 },
     flameJourney: { enabled: true, weight: 2 },
     university: { enabled: true, weight: 2 }
   },
   quoteSources: {
-    hitokoto: { enabled: true, weight: 3 },
-    jinrishici: { enabled: true, weight: 2 },
-    poetry: { enabled: true, weight: 1 },
-    vvhan: { enabled: true, weight: 1 },
-    xygeng: { enabled: true, weight: 1 },
+    cytime: { enabled: true, weight: 20 },
+    hitokoto: { enabled: false, weight: 3 },
+    jinrishici: { enabled: false, weight: 2 },
+    poetry: { enabled: false, weight: 1 },
+    vvhan: { enabled: false, weight: 1 },
+    xygeng: { enabled: false, weight: 1 },
     adviceSlip: { enabled: false, weight: 1 }
   },
   quoteAnimation: 'typewriter',
@@ -64,7 +67,7 @@ function readStoredSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem('cytime.settings.v1') || '{}')
     const base = cloneSettings(defaultSettings)
-    const merged = { ...base, ...(saved && typeof saved === 'object' ? saved : {}), quoteLocalSources: { ...base.quoteLocalSources, ...(saved?.quoteLocalSources || {}) }, quoteSources: { ...base.quoteSources, ...(saved?.quoteSources || {}) } }
+    const merged = { ...base, ...(saved && typeof saved === 'object' ? saved : {}), quoteLocalSources: { ...base.quoteLocalSources, ...(saved?.quoteLocalSources || {}) }, quoteSources: saved?.quoteSources?.cytime ? { ...base.quoteSources, ...saved.quoteSources } : base.quoteSources }
     if (!['clock', 'countdown', 'timer'].includes(merged.startupMode)) merged.startupMode = 'clock'
     return merged
   } catch {
@@ -94,6 +97,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function persist() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+    persistDesktopValue(STORAGE_KEY, settings).catch(() => {})
   }
 
   function update(patch) {

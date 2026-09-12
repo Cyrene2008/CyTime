@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
+import { persistDesktopValue } from '../services/desktop'
 
 const STORAGE_KEY = 'cytime.time-state.v1'
 
@@ -21,7 +22,9 @@ export const useTimeStore = defineStore('time', () => {
   const activeTimers = computed(() => timers.value.filter(task => ['running', 'paused'].includes(task.status)))
 
   function persist() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ countdowns: countdowns.value, timers: timers.value }))
+    const value = { countdowns: countdowns.value, timers: timers.value }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
+    persistDesktopValue(STORAGE_KEY, value).catch(() => {})
   }
 
   function hydrate() {

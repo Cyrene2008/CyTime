@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "CyTime desktop capabilities",
   "windows": ["main"],
-  "permissions": ["core:default", "opener:default", "autostart:default", "deep-link:default"]
+  "permissions": ["core:default", "core:window:allow-start-dragging", "core:window:allow-minimize", "core:window:allow-close", "core:window:allow-toggle-maximize", "opener:default", "dialog:default", "autostart:default", "deep-link:default"]
 }

@@ -1,7 +1,25 @@
 import { fileURLToPath, URL } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
+import { parseJsonc } from './api/data/jsonc.js'
+
+function jsoncPlugin() {
+  const suffix = '.jsonc'
+  return {
+    name: 'cytime-jsonc',
+    async resolveId(source, importer) {
+      if (!source.endsWith(suffix)) return null
+      return this.resolve(source, importer, { skipSelf: true })
+    },
+    load(id) {
+      if (!id.endsWith(suffix)) return null
+      const raw = readFileSync(id.replace(/\?.*$/, ''), 'utf8')
+      return `export default ${JSON.stringify(parseJsonc(raw))}`
+    }
+  }
+}
 
 export default defineConfig({
   server: {
@@ -14,9 +32,11 @@ export default defineConfig({
     }
   },
   plugins: [
+    jsoncPlugin(),
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: null,
       includeAssets: ['favicon.svg'],
       manifest: {
         name: 'CyTime 昔时时钟|班级大屏时钟|电子时钟|倒计时|计时器',
@@ -51,10 +71,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: [
-      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
-      { find: 'vue-fluent-widgets/style.css', replacement: fileURLToPath(new URL('../VueFluentWidgets/packages/vue-fluent-widgets/src/styles/global.css', import.meta.url)) },
-      // Use the adjacent library source while its public dist is being developed.
-      { find: 'vue-fluent-widgets', replacement: fileURLToPath(new URL('../VueFluentWidgets/packages/vue-fluent-widgets/src/index.js', import.meta.url)) }
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) }
     ]
   }
 })

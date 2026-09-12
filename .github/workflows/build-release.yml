@@ -14,19 +14,6 @@ jobs:
       - name: Checkout CyTime
         uses: actions/checkout@v4
 
-      - name: Checkout VueFluentWidgets dependency
-        uses: actions/checkout@v4
-        with:
-          repository: Cyrene2008/VueFluentWidgets
-          path: _deps/VueFluentWidgets
-
-      - name: Create symlink for VueFluentWidgets
-        run: |
-          New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/_deps" | Out-Null
-          $parent = Split-Path "${{ github.workspace }}" -Parent
-          New-Item -ItemType SymbolicLink -Path "$parent/VueFluentWidgets" -Target "${{ github.workspace }}/_deps/VueFluentWidgets"
-        shell: pwsh
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:

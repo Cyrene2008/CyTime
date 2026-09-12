@@ -1,4 +1,7 @@
+import { fetchJson } from './desktop'
+
 export const quoteSourceOptions = {
+  cytime: { label: 'CyTime 语录 API', language: '中文', description: '本站维护的安全语录服务', url: 'https://time.cyrene.hk/api/v1/quote?format=json' },
   hitokoto: { label: '一言', language: '中文', description: '综合短句与名人语录', url: 'https://v1.hitokoto.cn/?encode=json' },
   jinrishici: { label: '今日诗词', language: '中文', description: '古诗词与作者出处', url: 'https://v1.jinrishici.com/all.json' },
   poetry: { label: '诗泉', language: '中文', description: '随机古诗词与朝代作者', url: 'https://poetry.palemoky.com/api/poems/random?lang=zh-Hans' },
@@ -9,11 +12,12 @@ export const quoteSourceOptions = {
 
 const BLOCKED_TERMS = ['色情', '赌博', '毒品', '暴力恐怖']
 
-export async function fetchCloudQuote(source = 'hitokoto', signal) {
+export async function fetchCloudQuote(source = 'hitokoto', signal, categories = []) {
   const sourceConfig = quoteSourceOptions[source] || quoteSourceOptions.hitokoto
-  const data = await fetchJson(sourceConfig.url, signal)
+  const url = source === 'cytime' && categories.length ? `${sourceConfig.url}&category=${encodeURIComponent(categories.join(','))}` : sourceConfig.url
+  const data = await fetchJson(url, signal)
   const payload = data?.data && typeof data.data === 'object' ? data.data : data
-  const quote = String(payload.hitokoto || payload.content || payload.quote || payload.text || payload.advice || payload.slip?.advice || payload.poem || '').trim()
+  const quote = String(payload.hitokoto || payload.content || payload.quote || payload.text || payload.value || payload.advice || payload.slip?.advice || payload.poem || '').trim()
   if (!quote) throw new Error('Empty quote response')
   if (BLOCKED_TERMS.some(term => quote.includes(term))) throw new Error('Unsafe quote response')
   return {
@@ -23,6 +27,11 @@ export async function fetchCloudQuote(source = 'hitokoto', signal) {
     source,
     sourceName: sourceConfig.label
   }
+}
+
+export async function fetchQuoteCategories(signal) {
+  const response = await fetchJson('https://time.cyrene.hk/api/v1/quote/categories', signal)
+  return Array.isArray(response?.categories) ? response.categories.map(String).filter(Boolean) : []
 }
 
 export async function readQuoteFile(file) {
@@ -37,4 +46,3 @@ export async function readQuoteFile(file) {
   }
   return text.split(/\r?\n/).map(item => item.trim()).filter(Boolean).map(item => ({ text: item }))
 }
-import { fetchJson } from './desktop'

@@ -23,6 +23,7 @@ const controlsHidden = ref(false)
 const settingsOpen = ref(false)
 const desktopAvailable = ref(false)
 const desktopMini = ref(false)
+const desktopWindowMode = ref('normal')
 const desktopAutoStart = ref(false)
 const fullscreenActive = ref(false)
 const isSettings = computed(() => settingsOpen.value)
@@ -76,9 +77,11 @@ async function toggleFullscreen() {
     window.__cytimeMiniMode = false
     if (fullscreenActive.value) {
       await setDesktopWindowMode('normal')
+      desktopWindowMode.value = 'normal'
       fullscreenActive.value = false
     } else {
       await setDesktopWindowMode('full')
+      desktopWindowMode.value = 'full'
       fullscreenActive.value = true
     }
     return
@@ -90,13 +93,18 @@ async function toggleFullscreen() {
 
 function minimizeWindow() { desktopWindowAction('minimize') }
 function closeWindow() { desktopWindowAction('close') }
-function startDrag(event) { if (isDesktop()) { event.preventDefault(); getCurrentWindow().startDragging().catch(() => {}) } }
+function startDrag(event) {
+  if (!isDesktop() || event.buttons !== 1) return
+  event.preventDefault()
+  getCurrentWindow().startDragging().catch(() => {})
+}
 function maximizeWindow() {
   if (desktopMini.value) {
     desktopMini.value = false
     window.__cytimeMiniMode = false
     setDesktopWindowMode('normal')
-  } else desktopWindowAction('maximize')
+    desktopWindowMode.value = 'normal'
+  } else { desktopWindowAction('maximize'); desktopWindowMode.value = 'max' }
 }
 
 function openSettings() {
@@ -116,6 +124,7 @@ function handleDesktopUri(rawUri) {
     if (mode && ['mini', 'normal', 'max', 'full'].includes(mode)) {
       desktopMini.value = mode === 'mini'
       fullscreenActive.value = mode === 'full'
+      desktopWindowMode.value = mode
       window.__cytimeMiniMode = desktopMini.value
       setDesktopWindowMode(mode)
     }
@@ -253,6 +262,7 @@ async function initializeDesktopWindow() {
   const mode = uriMode || settingsStore.settings.startupWindowMode || 'normal'
   desktopMini.value = mode === 'mini'
   fullscreenActive.value = mode === 'full'
+  desktopWindowMode.value = mode
   window.__cytimeMiniMode = desktopMini.value
   try { await setDesktopUriRegistration(settingsStore.settings.uriRegistration) } catch {}
   await setDesktopWindowMode(mode, !desktopAutoStart.value || Boolean(uriMode))
@@ -350,7 +360,7 @@ onUnmounted(() => {
 <template>
   <div class="app-root" :class="{ 'is-desktop': desktopAvailable }">
     <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" @mousedown="startDrag"><span>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
-    <div class="app-shell" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini }">
+    <div class="app-shell" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, [`window-mode-${desktopWindowMode}`]: desktopAvailable }">
     <header v-if="!isSettings && !settingsStore.examModeActive" class="status-dock" aria-label="状态信息">
       <div v-if="settingsStore.settings.showWeather" class="status-weather"><strong>{{ weatherTemperature }}°</strong><FluentIcon icon="weather-partly-cloudy-day-20-regular" :width="18" /><span>{{ weatherStatus }}</span></div>
       <div v-if="settingsStore.settings.showDayProgress" class="status-progress"><span>今日进度</span><div class="status-progress-bar"><i :style="{ width: `${progress}%` }"></i></div><strong>{{ progress.toFixed(0) }}%</strong></div>

@@ -32,8 +32,7 @@ const { value: typedQuote, isTyping } = useTypewriter(() => quotesStore.current,
 const quote = computed(() => settingsStore.settings.quoteAnimation === 'typewriter' ? typedQuote.value : quotesStore.current)
 const quoteAttribution = computed(() => {
   const meta = quotesStore.metadata
-  const attribution = [meta.author, meta.work].filter(Boolean).join(' · ')
-  return attribution ? `——${attribution}` : ''
+  return [meta.author, meta.work].filter(Boolean).join(' · ')
 })
 </script>
 

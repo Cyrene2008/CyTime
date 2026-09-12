@@ -44,7 +44,7 @@ export async function fetchJson(url, signal) {
 }
 
 export async function fetchNetworkTime() {
-  if (isTauri()) return invoke('desktop_fetch_network_time')
+  if (isDesktop()) return invoke('desktop_fetch_network_time')
   const data = await fetchJson('https://worldtimeapi.org/api/timezone/Etc/UTC')
   const unixSeconds = Number(data?.unixtime)
   if (!Number.isFinite(unixSeconds)) throw new Error('Time service returned no unix time')
@@ -52,7 +52,7 @@ export async function fetchNetworkTime() {
 }
 
 export async function initDesktopBridge(onUri) {
-  if (!isTauri()) return () => {}
+  if (!isDesktop()) return () => {}
   let lastUri = ''
   let lastUriAt = 0
   const deliver = value => {
@@ -74,21 +74,55 @@ export async function initDesktopBridge(onUri) {
 }
 
 export function setDesktopWindowMode(mode, reveal = true) {
-  return isTauri() ? invoke('desktop_window_mode', { mode, reveal }) : Promise.resolve(false)
+  return isDesktop() ? invoke('desktop_window_mode', { mode, reveal }) : Promise.resolve(false)
 }
 
 export function setDesktopAutostart(enabled) {
-  return isTauri() ? invoke('desktop_set_autostart', { enabled }) : Promise.resolve(false)
+  return isDesktop() ? invoke('desktop_set_autostart', { enabled }) : Promise.resolve(false)
 }
 
 export function setDesktopUriRegistration(enabled) {
-  return isTauri() ? invoke('desktop_set_uri_registration', { enabled }) : Promise.resolve(false)
+  return isDesktop() ? invoke('desktop_set_uri_registration', { enabled }) : Promise.resolve(false)
 }
 
 export function desktopWindowAction(action) {
-  return isTauri() ? invoke('desktop_window_action', { action }) : Promise.resolve(false)
+  return isDesktop() ? invoke('desktop_window_action', { action }) : Promise.resolve(false)
 }
 
 export async function getDesktopStartupArgs() {
-  return isTauri() ? invoke('desktop_startup_args') : []
+  return isDesktop() ? invoke('desktop_startup_args') : []
+}
+
+export function persistDesktopValue(key, value) {
+  return isDesktop() ? invoke('storage_write', { key, value }) : Promise.resolve()
+}
+
+export async function saveDesktopFile(path, content) {
+  return isDesktop() ? invoke('desktop_write_file', { path, content }) : false
+}
+
+export async function chooseAndSaveFile(content, fileName = 'cytime-backup.json') {
+  if (isDesktop()) {
+    const { save } = await import('@tauri-apps/plugin-dialog')
+    const path = await save({ defaultPath: fileName, filters: [{ name: 'JSON', extensions: ['json'] }] })
+    if (!path) return false
+    await saveDesktopFile(path, content)
+    return true
+  }
+  if (window.showSaveFilePicker) {
+    const handle = await window.showSaveFilePicker({ suggestedName: fileName, types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }] })
+    const writable = await handle.createWritable()
+    await writable.write(content)
+    await writable.close()
+    return true
+  }
+  return false
+}
+
+export function checkDesktopUpdate() {
+  return isDesktop() ? invoke('desktop_check_update') : fetchJson('https://api.github.com/repos/Cyrene2008/CyTime/releases/latest')
+}
+
+export function downloadDesktopUpdate(url) {
+  return isDesktop() ? invoke('desktop_download_update', { url }) : window.open(url, '_blank', 'noopener,noreferrer')
 }
