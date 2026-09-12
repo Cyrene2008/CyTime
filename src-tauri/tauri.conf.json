@@ -36,7 +36,8 @@
         "resizable": true,
         "decorations": false,
         "shadow": true,
-        "visible": false
+        "visible": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --disk-cache-size=1"
       }
     ],
     "security": {
