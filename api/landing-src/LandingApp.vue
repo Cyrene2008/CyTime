@@ -89,9 +89,9 @@ GET https://time.cyrene.hk/api/v1/quote/categories
 GET https://time.cyrene.hk/api/v1/quote/count
 GET https://time.cyrene.hk/api/v1/quote/count?category=崩铁</pre>
       <pre>{
-  "value": "……",
-  "author": "CyTime",
-  "from": "逐火篇章",
+  "value": "因为世界对我温柔，我就长成温柔的模样。",
+  "author": "德谬歌",
+  "from": "HSR",
   "category": ["崩铁"],
   "source": "CyQuote"
 }</pre>
