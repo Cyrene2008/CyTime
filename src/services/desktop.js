@@ -111,8 +111,23 @@ export async function chooseAndSaveFile(content, fileName = 'cytime-backup.json'
   return false
 }
 
-export function checkDesktopUpdate() {
-  return isDesktop() ? invoke('desktop_check_update') : fetchJson('https://api.github.com/repos/Cyrene2008/CyTime/releases/latest')
+export async function checkDesktopUpdate() {
+  const mirrors = [
+    'https://gh.昔涟.cn',
+    'https://v4.gh-proxy.com',
+    'https://api.github.com'
+  ]
+  if (isDesktop()) {
+    try {
+      return await invoke('desktop_check_update')
+    } catch {}
+  }
+  for (const base of mirrors) {
+    try {
+      return await fetchJson(`${base}/repos/Cyrene2008/CyTime/releases/latest`)
+    } catch {}
+  }
+  throw new Error('无法访问更新源')
 }
 
 export function downloadDesktopUpdate(url) {

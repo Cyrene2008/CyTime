@@ -67,7 +67,7 @@ export const defaultSettings = {
   homeworkOffsetX: 0,
   uiScale: 100,
   timeSyncEnabled: true,
-  timeSyncSource: 'auto',
+  timeSyncSource: 'system',
   timeSyncInterval: 60
 }
 
