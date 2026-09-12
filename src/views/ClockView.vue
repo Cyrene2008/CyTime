@@ -62,6 +62,6 @@ const quoteAttribution = computed(() => {
       <div class="hero-date">{{ dateText }}<span v-if="almanac" class="hero-lunar">{{ almanac.lunarText }}<template v-if="almanac.festival"> · {{ almanac.festival }}</template></span></div>
     </div>
     <div v-if="!settingsStore.examModeActive && settingsStore.settings.showSchedule && (currentLesson || nextLesson)" class="clock-schedule"><strong>{{ currentLesson ? `正在上课 · ${currentLesson.subject}` : `下一节 · ${nextLesson.subject}` }}</strong><span>{{ currentLesson ? `${currentLesson.startAt} - ${currentLesson.endAt}` : `${nextLesson.startAt} 开始` }}<template v-if="(currentLesson || nextLesson).room"> · {{ (currentLesson || nextLesson).room }}</template></span></div>
-    <p v-if="!settingsStore.examModeActive && settingsStore.settings.showQuote && quote" class="hero-quote quote-clickable" :class="[`quote-${settingsStore.settings.quoteAnimation}`, { 'is-typing': isTyping }]" @click="quotesStore.refresh"><span class="quote-text">{{ quote }}</span><small v-if="quoteAttribution">{{ quoteAttribution }}</small></p>
+    <p v-if="!settingsStore.examModeActive && settingsStore.settings.showQuote" class="hero-quote" :class="[`quote-${settingsStore.settings.quoteAnimation}`, { 'is-typing': isTyping }]"><template v-if="quote"><span class="quote-text">{{ quote }}</span><small v-if="quoteAttribution">{{ quoteAttribution }}</small></template></p>
   </section>
 </template>
