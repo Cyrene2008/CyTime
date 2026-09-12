@@ -1,0 +1,79 @@
+name: Deploy to Cloudflare Pages
+
+# 需要在 GitHub 仓库 Settings -> Secrets and variables -> Actions 中配置：
+#   CLOUDFLARE_API_KEY   = Cloudflare Global API Key（API 配置中的 API Key）
+#   CLOUDFLARE_EMAIL     = Cloudflare 账号邮箱（API Key 对应的 E-Mail）
+#   CLOUDFLARE_ACCOUNT_ID = Cloudflare Account ID（仪表盘右侧栏 / dash URL 中）
+# 更推荐后续换成 scoped API Token：把 CLOUDFLARE_API_TOKEN 配置为 secret 并告知维护者切换工作流。
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [Cyrene]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-pages
+  cancel-in-progress: true
+
+jobs:
+  check-credentials:
+    name: Check credentials
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.credentials.outputs.configured }}
+    steps:
+      - name: Check Cloudflare secrets
+        id: credentials
+        run: |
+          if [ -n "${{ secrets.CLOUDFLARE_API_KEY }}" ] && [ -n "${{ secrets.CLOUDFLARE_EMAIL }}" ] && [ -n "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare secrets 未配置，跳过部署。请在仓库 Actions secrets 中添加 CLOUDFLARE_API_KEY / CLOUDFLARE_EMAIL / CLOUDFLARE_ACCOUNT_ID。"
+          fi
+
+  deploy:
+    name: Build and deploy
+    needs: check-credentials
+    if: needs.check-credentials.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --registry=https://registry.npmjs.org/
+
+      - name: Build (syncs quote data and Cloudflare Functions)
+        run: bun run build
+
+      - name: Ensure Cloudflare Pages project exists
+        uses: cloudflare/wrangler-action@v3
+        continue-on-error: true
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages project create cytime --production-branch=main
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+
+      - name: Deploy to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=cytime --branch=main
+        env:
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+
+      - name: Show deployment URL
+        run: echo "Deployed to ${{ steps.deploy.outputs.deployment-url }}"
