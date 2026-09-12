@@ -215,7 +215,11 @@ async fn desktop_fetch_json(url: String) -> Result<Value, String> {
         "api.xygeng.cn",
         "api.adviceslip.com",
         "worldtimeapi.org",
+        "timeapi.io",
         "time.cyrene.hk",
+        "ipwho.is",
+        "ipapi.co",
+        "api.bigdatacloud.net",
         "api.github.com",
     ];
     if parsed.scheme() != "https" || !parsed.host_str().is_some_and(|host| allowed_hosts.contains(&host)) {

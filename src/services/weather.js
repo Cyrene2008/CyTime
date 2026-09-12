@@ -43,3 +43,58 @@ export function weatherLabel(code) {
   }
   return labels[Number(code)] || '天气未知'
 }
+
+function browserCoordinates() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('当前环境不支持定位'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      position => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
+      error => reject(error),
+      { timeout: 8000, maximumAge: 10 * 60 * 1000 }
+    )
+  })
+}
+
+async function reverseGeocode(latitude, longitude, signal) {
+  const params = new URLSearchParams({ latitude: String(latitude), longitude: String(longitude), localityLanguage: 'zh' })
+  const data = await fetchJson(`https://api.bigdatacloud.net/data/reverse-geocode-client?${params}`, signal)
+  return String(data?.city || data?.locality || data?.principalSubdivision || '').trim()
+}
+
+async function locateByIp(signal) {
+  let geo
+  try { geo = await fetchJson('https://ipwho.is/', signal) } catch {}
+  if (!geo || geo.success === false || (!geo.city && !Number.isFinite(Number(geo.latitude)))) {
+    geo = await fetchJson('https://ipapi.co/json/', signal)
+  }
+  const latitude = Number(geo?.latitude)
+  const longitude = Number(geo?.longitude)
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+    try {
+      const city = await reverseGeocode(latitude, longitude, signal)
+      if (city) return { city, latitude, longitude }
+    } catch {}
+  }
+  const fallbackCity = String(geo?.city || '').trim()
+  if (fallbackCity) return { city: fallbackCity, latitude, longitude }
+  throw new Error('无法根据网络定位城市')
+}
+
+export async function locateWeatherCity(signal) {
+  let located = await locateByIp(signal).catch(() => null)
+  if (!located) {
+    const coordinates = await browserCoordinates()
+    const city = await reverseGeocode(coordinates.latitude, coordinates.longitude, signal)
+    if (!city) throw new Error('无法定位城市')
+    located = { city, ...coordinates }
+  }
+  const results = await searchXiaomiCities(located.city, signal)
+  if (!results.length) throw new Error(`未找到与「${located.city}」匹配的城市`)
+  const match = results.find(item => item.name === located.city)
+    || results.find(item => item.name.includes(located.city) || located.city.includes(item.name))
+    || results[0]
+  return { name: match.name, num: match.locationKey.replace(/^weathercn:/, ''), city: located.city }
+}

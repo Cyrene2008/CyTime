@@ -4445,18 +4445,23 @@ function landing() {
 export async function onRequest(context) {
   if (context.request.method !== 'GET') return landing()
   const url = new URL(context.request.url)
-  const requested = (url.searchParams.get('category') || '')
-    .split(',')
-    .map(item => item.trim())
-    .filter(item => categories.includes(item))
-  const selected = requested.length ? requested : categories
-  const pool = selected.flatMap(category => quoteCatalog[category])
-  const quote = pool[Math.floor(Math.random() * pool.length)]
-  return new Response(JSON.stringify({ ...quote, category: selected, source: 'CyQuote' }), {
+  const requested = (url.searchParams.get('category') || '').trim()
+  const counts = {}
+  let total = 0
+  for (const category of categories) {
+    counts[category] = quoteCatalog[category].length
+    total += counts[category]
+  }
+  const respond = (body, status = 200) => new Response(JSON.stringify(body), {
+    status,
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-store, max-age=0',
       'Content-Type': 'application/json; charset=utf-8'
     }
   })
+  if (!requested) return respond({ total, categories: counts })
+  if (requested.includes(',')) return respond({ error: '一次只能查询一个分类' }, 400)
+  if (!categories.includes(requested)) return respond({ error: '分类不存在', category: requested }, 404)
+  return respond({ category: requested, count: counts[requested] })
 }

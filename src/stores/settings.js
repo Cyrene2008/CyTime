@@ -55,6 +55,7 @@ export const defaultSettings = {
   quoteTypeSpeed: 'standard',
   weatherCityName: '北京',
   weatherCityNum: '101010100',
+  weatherAutoLocated: false,
   fontFamily: 'wengfaluosi',
   background: 'mica',
   clockFontScale: 11,
@@ -65,7 +66,8 @@ export const defaultSettings = {
   homeworkWidth: 300,
   homeworkOffsetX: 0,
   uiScale: 100,
-  timeSyncEnabled: false,
+  timeSyncEnabled: true,
+  timeSyncSource: 'auto',
   timeSyncInterval: 60
 }
 

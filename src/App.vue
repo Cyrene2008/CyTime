@@ -11,7 +11,9 @@ import { dayProgress, formatDuration } from './utils/time'
 import { parseCountdownTarget } from './utils/time'
 import { FILING_NAME, FILING_URL } from './config/branding'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { desktopWindowAction, fetchNetworkTime, getDesktopStartupArgs, initDesktopBridge, isDesktop, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
+import { desktopWindowAction, getDesktopStartupArgs, initDesktopBridge, isDesktop, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
+import { fetchNetworkTime } from './services/timeSync'
+import { locateWeatherCity } from './services/weather'
 
 const route = useRoute()
 const router = useRouter()
@@ -35,7 +37,10 @@ const purePromptSeconds = ref(10)
 const currentDate = computed(() => new Date(timeStore.now))
 const progress = computed(() => dayProgress(currentDate.value))
 const examRemaining = computed(() => Math.max(0, Math.ceil((new Date('2027-06-07T00:00:00').getTime() - timeStore.now) / 86400000)))
-const featuredDay = computed(() => contentStore.content.importantDays.filter(item => new Date(`${item.date}T23:59:59`).getTime() >= timeStore.now).sort((a, b) => a.date.localeCompare(b.date))[0])
+const upcomingDays = computed(() => contentStore.content.importantDays.filter(item => new Date(`${item.date}T23:59:59`).getTime() >= timeStore.now).sort((a, b) => a.date.localeCompare(b.date)))
+const dayRotation = ref(0)
+const featuredDay = computed(() => upcomingDays.value.length ? upcomingDays.value[dayRotation.value % upcomingDays.value.length] : null)
+const featuredDayRemaining = computed(() => featuredDay.value ? Math.max(0, Math.ceil((new Date(`${featuredDay.value.date}T00:00:00`).getTime() - timeStore.now) / 86400000)) : examRemaining.value)
 const weatherTemperature = computed(() => weatherStore.current?.temperature?.value || '--')
 const weatherStatus = computed(() => weatherStore.current ? weatherStore.currentLabel : (weatherStore.error || '天气同步中'))
 const taskNotice = ref('')
@@ -49,6 +54,7 @@ let controlsTimer
 let noticeTimer
 let purePromptTimer
 let purePromptCountdownTimer
+let dayRotationTimer
 let showControlsHandler
 let taskResizeObserver
 let safeAreaObserver
@@ -64,10 +70,17 @@ const navItems = [
   { path: '/timer', label: '计时器', icon: 'arrow-clockwise-20-regular' }
 ]
 const activeTaskCount = computed(() => timeStore.activeCountdowns.length + timeStore.activeTimers.length)
+const sideLayoutQuery = typeof window === 'undefined' ? null : window.matchMedia('(min-width: 621px)')
+const homeworkVisible = computed(() => settingsStore.settings.showHomework && !settingsStore.examModeActive && !(desktopAvailable.value && ['normal', 'mini'].includes(desktopWindowMode.value)))
+const taskSide = computed(() => homeworkVisible.value && settingsStore.settings.homeworkPosition === 'right' ? 'left' : 'right')
 
 function updateTaskOverflow() {
   const element = taskDock.value
   if (!element) {
+    taskOverflow.value = false
+    return
+  }
+  if (sideLayoutQuery?.matches) {
     taskOverflow.value = false
     return
   }
@@ -174,6 +187,15 @@ function handleDesktopUri(rawUri) {
   } catch {}
 }
 
+const countdownHandlers = {
+  warning: onCountdownWarning,
+  complete: onCountdownComplete,
+  stop() {
+    window.removeEventListener('cytime:countdown-warning', countdownHandlers.warning)
+    window.removeEventListener('cytime:countdown-complete', countdownHandlers.complete)
+  }
+}
+
 let audioContext
 function prepareAudio() {
   if (typeof AudioContext === 'undefined') return
@@ -181,21 +203,50 @@ function prepareAudio() {
   audioContext.resume?.()
 }
 
-function playTone(frequency, duration, delay = 0, volume = 0.08, type = 'sine') {
+// 《昔涟》简谱（1=♭B，4/4）：曾(3)1 许(1)0.5 下(5)1 心(6)0.5 愿(4)1 | 等待(2 3) | 你(4·) 的出现(3 2 3 –)
+const JIANPU = { 1: 466.16, 2: 523.25, 3: 587.33, 4: 622.25, 5: 698.46, 6: 783.99, 7: 880.0 }
+const COMPLETION_MELODY = [
+  [3, 0.5], [1, 0.25], [5, 0.75], [6, 0.25], [4, 1.75],
+  [2, 0.25], [3, 0.25],
+  [4, 1.5],
+  [3, 0.25], [2, 0.25], [3, 1.75]
+]
+
+function playCompletionMelody() {
+  const beat = 0.74
+  let at = 0
+  COMPLETION_MELODY.forEach(([note, beats], index) => {
+    const duration = beats * beat
+    if (note) playBell(JIANPU[note], at, index % 2 ? 0.038 : 0.046, Math.max(0.16, Math.min(0.8, duration * 0.95)))
+    at += duration
+  })
+}
+
+function playBell(frequency, delay = 0, volume = 0.05, duration = 0.9) {
   try {
     prepareAudio()
     if (!audioContext) return
     const start = audioContext.currentTime + delay
-    const oscillator = audioContext.createOscillator()
-    const gain = audioContext.createGain()
-    oscillator.frequency.value = frequency
-    oscillator.type = type
-    gain.gain.setValueAtTime(0.0001, start)
-    gain.gain.exponentialRampToValueAtTime(volume, start + 0.01)
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
-    oscillator.connect(gain).connect(audioContext.destination)
-    oscillator.start(start)
-    oscillator.stop(start + duration + 0.02)
+    const master = audioContext.createGain()
+    const filter = audioContext.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = Math.min(9000, frequency * 6)
+    master.gain.setValueAtTime(0.0001, start)
+    master.gain.exponentialRampToValueAtTime(volume, start + 0.012)
+    master.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+    master.connect(filter).connect(audioContext.destination)
+    for (const [ratio, level, decay] of [[1, 1, duration], [2.02, 0.26, duration * 0.58], [3.01, 0.07, duration * 0.36]]) {
+      const oscillator = audioContext.createOscillator()
+      const gain = audioContext.createGain()
+      oscillator.type = 'sine'
+      oscillator.frequency.value = frequency * ratio
+      gain.gain.setValueAtTime(0.0001, start)
+      gain.gain.exponentialRampToValueAtTime(level, start + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + decay)
+      oscillator.connect(gain).connect(master)
+      oscillator.start(start)
+      oscillator.stop(start + decay + 0.05)
+    }
   } catch {}
 }
 
@@ -207,10 +258,7 @@ function showTaskNotice(message) {
 
 function onCountdownWarning(event) {
   const { task, seconds } = event.detail || {}
-  if (settingsStore.settings.soundEnabled) {
-    playTone(880, 0.08, 0, 0.06)
-    playTone(1320, 0.06, 0.04, 0.035)
-  }
+  if (settingsStore.settings.soundEnabled) playBell(1567.98, 0, 0.032, 0.22)
   navigator.vibrate?.(80)
   notifyTask('CyTime 倒计时提醒', `${task?.label || '倒计时'} 还剩 ${seconds} 秒`)
   showTaskNotice(`${task?.label || '倒计时'} · ${seconds} 秒`)
@@ -218,11 +266,7 @@ function onCountdownWarning(event) {
 
 function onCountdownComplete(event) {
   const task = event.detail?.task
-  if (settingsStore.settings.soundEnabled) {
-    playTone(523.25, 0.16, 0, 0.08)
-    playTone(659.25, 0.22, 0.12, 0.07)
-    playTone(783.99, 0.3, 0.25, 0.06)
-  }
+  if (settingsStore.settings.soundEnabled) playCompletionMelody()
   navigator.vibrate?.([120, 80, 180])
   notifyTask('CyTime 倒计时结束', `${task?.label || '倒计时'} 已结束`)
   showTaskNotice(`${task?.label || '倒计时'} 已结束`)
@@ -271,11 +315,26 @@ function exitExamMode() {
 
 async function syncNetworkTime() {
   if (!settingsStore.settings.timeSyncEnabled) return
+  const source = settingsStore.settings.timeSyncSource || 'auto'
+  if (source === 'system') {
+    timeStore.setClockOffset(0)
+    return
+  }
   const startedAt = Date.now()
   try {
-    const serverTime = await fetchNetworkTime()
+    const serverTime = await fetchNetworkTime(source)
     const midpoint = startedAt + (Date.now() - startedAt) / 2
     timeStore.setClockOffset(serverTime - midpoint)
+  } catch {}
+}
+
+async function autoLocateWeather() {
+  const { weatherAutoLocated, weatherCityNum, showWeather } = settingsStore.settings
+  if (!showWeather || weatherAutoLocated) return
+  if (weatherCityNum && weatherCityNum !== '101010100') return
+  try {
+    const located = await locateWeatherCity()
+    settingsStore.update({ weatherCityName: located.name, weatherCityNum: located.num, weatherAutoLocated: true })
   } catch {}
 }
 
@@ -297,7 +356,7 @@ watch(() => [settingsStore.settings.weatherCityNum, settingsStore.settings.showW
   if (visible) weatherStore.refresh(cityNum, true)
 })
 watch(() => settingsStore.settings.preventSleep, syncWakeLock)
-watch(() => [settingsStore.settings.timeSyncEnabled, settingsStore.settings.timeSyncInterval], () => {
+watch(() => [settingsStore.settings.timeSyncEnabled, settingsStore.settings.timeSyncSource, settingsStore.settings.timeSyncInterval], () => {
   window.clearInterval(timeSyncTimer)
   if (settingsStore.settings.timeSyncEnabled) {
     syncNetworkTime()
@@ -310,6 +369,8 @@ onMounted(async () => {
   desktopAvailable.value = await probeDesktop()
   settingsStore.setExamMode(false)
   if (settingsStore.settings.showWeather) weatherStore.refresh(settingsStore.settings.weatherCityNum)
+  autoLocateWeather()
+  dayRotationTimer = window.setInterval(() => { if (upcomingDays.value.length > 1) dayRotation.value = (dayRotation.value + 1) % upcomingDays.value.length }, 15000)
   weatherTimer = window.setInterval(() => { if (settingsStore.settings.showWeather) weatherStore.refresh(settingsStore.settings.weatherCityNum, true) }, 30 * 60 * 1000)
   showControlsHandler = () => {
     prepareAudio()
@@ -320,6 +381,8 @@ onMounted(async () => {
   window.addEventListener('pointermove', showControlsHandler, { passive: true })
   window.addEventListener('pointerdown', showControlsHandler, { passive: true })
   window.addEventListener('keydown', showControlsHandler)
+  window.__cytimeCountdownHandlers?.stop?.()
+  window.__cytimeCountdownHandlers = countdownHandlers
   window.addEventListener('cytime:countdown-warning', onCountdownWarning)
   window.addEventListener('cytime:countdown-complete', onCountdownComplete)
   syncAfterVisibilityChange = () => {
@@ -355,6 +418,7 @@ onMounted(async () => {
   })
   safeAreaObserver = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(syncContentSafeTop)
   window.addEventListener('resize', syncContentSafeTop)
+  sideLayoutQuery?.addEventListener('change', updateTaskOverflow)
   stopSafeAreaWatch = watch([isSettings, () => settingsStore.examModeActive, () => settingsStore.settings.statusDockScale, () => settingsStore.settings.statusDockOffsetY, () => settingsStore.settings.uiScale], async () => {
     await nextTick()
     observeSafeAreas()
@@ -368,12 +432,16 @@ onUnmounted(() => {
   quotesStore.stop()
   window.clearInterval(weatherTimer)
   window.clearInterval(timeSyncTimer)
+  window.clearInterval(dayRotationTimer)
   window.clearTimeout(controlsTimer)
-  window.removeEventListener('cytime:countdown-warning', onCountdownWarning)
-  window.removeEventListener('cytime:countdown-complete', onCountdownComplete)
+  if (window.__cytimeCountdownHandlers === countdownHandlers) {
+    countdownHandlers.stop()
+    delete window.__cytimeCountdownHandlers
+  }
   document.removeEventListener('visibilitychange', syncAfterVisibilityChange)
   window.removeEventListener('focus', syncAfterVisibilityChange)
   window.removeEventListener('resize', syncContentSafeTop)
+  sideLayoutQuery?.removeEventListener('change', updateTaskOverflow)
   taskResizeObserver?.disconnect()
   safeAreaObserver?.disconnect()
   stopTaskWatch?.()
@@ -399,7 +467,7 @@ onUnmounted(() => {
     <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息">
       <div v-if="settingsStore.settings.showWeather" class="status-weather"><strong>{{ weatherTemperature }}°</strong><FluentIcon icon="weather-partly-cloudy-day-20-regular" :width="18" /><span>{{ weatherStatus }}</span></div>
       <div v-if="settingsStore.settings.showDayProgress" class="status-progress"><span>今日进度</span><div class="status-progress-bar"><i :style="{ width: `${progress}%` }"></i></div><strong>{{ progress.toFixed(0) }}%</strong></div>
-      <div v-if="settingsStore.settings.showImportantDays" class="status-exam"><span>距离 {{ featuredDay?.name || '重要日' }}仅</span><strong>{{ featuredDay ? Math.max(0, Math.ceil((new Date(`${featuredDay.date}T00:00:00`).getTime() - timeStore.now) / 86400000)) : examRemaining }}</strong><span>天</span></div>
+      <div v-if="settingsStore.settings.showImportantDays" class="status-exam"><span>距离 <Transition name="status-swap" mode="out-in"><b :key="featuredDay?.id || 'fallback'" class="status-day-name">{{ featuredDay?.name || '重要日' }}</b></Transition>仅</span><strong>{{ featuredDayRemaining }}</strong><span>天</span></div>
     </header>
     <nav v-if="!isSettings" ref="navRef" class="mode-nav" aria-label="模式切换">
       <RouterLink v-for="item in navItems" :key="item.path" :to="item.path" :class="{ active: route.path === item.path }"><FluentIcon :icon="item.icon" :width="17" /><span>{{ item.label }}</span></RouterLink>
@@ -414,7 +482,7 @@ onUnmounted(() => {
         <a class="app-signature" href="https://github.com/Cyrene2008/CyTime" target="_blank" rel="noreferrer">v{{ appVersion }}<span v-if="buildId"> (build {{ buildId }})</span> by Cyrene2008</a>
         <a v-if="FILING_NAME" class="app-filing" :href="FILING_URL" target="_blank" rel="noreferrer">{{ FILING_NAME }}</a>
       </div>
-      <div v-if="activeTaskCount && !settingsStore.examModeActive" ref="taskDock" class="task-docks" :class="{ 'is-marquee': taskOverflow }"><div class="task-docks-track"><template v-for="copy in taskOverflow ? 2 : 1" :key="copy"><RouterLink v-for="task in timeStore.activeCountdowns" :key="`${copy}-${task.id}`" to="/countdown" class="task-widget task-widget-countdown" @click="timeStore.selectCountdown(task)"><span class="task-dot pink"></span><span>{{ task.label }}</span><strong>{{ formatDuration(countdownRemaining(task)) }}</strong></RouterLink><RouterLink v-for="task in timeStore.activeTimers" :key="`${copy}-${task.id}-timer`" to="/timer" class="task-widget task-widget-timer" @click="timeStore.selectTimer(task)"><span class="task-dot green"></span><span>{{ task.label }}</span><strong>{{ formatDuration(timeStore.timerElapsed(task)) }}</strong></RouterLink></template></div></div>
+      <div v-if="activeTaskCount && !settingsStore.examModeActive" ref="taskDock" class="task-docks" :class="['is-side', `task-docks-${taskSide}`, { 'is-marquee': taskOverflow }]"><div class="task-docks-track"><template v-for="copy in taskOverflow ? 2 : 1" :key="copy"><RouterLink v-for="task in timeStore.activeCountdowns" :key="`${copy}-${task.id}`" to="/countdown" class="task-widget task-widget-countdown" @click="timeStore.selectCountdown(task)"><span class="task-dot pink"></span><span>{{ task.label }}</span><strong>{{ formatDuration(countdownRemaining(task)) }}</strong></RouterLink><RouterLink v-for="task in timeStore.activeTimers" :key="`${copy}-${task.id}-timer`" to="/timer" class="task-widget task-widget-timer" @click="timeStore.selectTimer(task)"><span class="task-dot green"></span><span>{{ task.label }}</span><strong>{{ formatDuration(timeStore.timerElapsed(task)) }}</strong></RouterLink></template></div></div>
       <div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div>
       <div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净考试模式提示"><div class="pure-prompt-card"><h2>是否进入纯净模式(考试模式)</h2><p>该模式下仅显示当前时间，隐藏其他内容。可以点击界面上的退出纯净/考试模式按钮退出，也可点击进入纯净/考试模式按钮进入。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">不了 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div>
     </template>

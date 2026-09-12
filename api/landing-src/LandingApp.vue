@@ -1,11 +1,19 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { useTypewriter } from '../../src/composables/useTypewriter.js'
 import { COPYRIGHT, FILING_NAME, FILING_URL } from '../../src/config/branding.js'
 
 const quote = ref(null)
 const state = ref('loading')
 const version = __APP_VERSION__
 const buildId = __BUILD_ID__
+const bodyRef = ref(null)
+const innerRef = ref(null)
+const { value: typedText, isTyping } = useTypewriter(() => quote.value?.value || '', {
+  animation: () => 'typewriter',
+  typeSpeed: () => 'standard'
+})
+let heightObserver
 
 async function refresh() {
   state.value = 'loading'
@@ -19,7 +27,19 @@ async function refresh() {
   }
 }
 
-onMounted(refresh)
+function syncHeight() {
+  if (bodyRef.value && innerRef.value) bodyRef.value.style.height = `${innerRef.value.offsetHeight}px`
+}
+
+onMounted(() => {
+  refresh()
+  if (typeof ResizeObserver === 'undefined') return
+  heightObserver = new ResizeObserver(syncHeight)
+  if (innerRef.value) heightObserver.observe(innerRef.value)
+  syncHeight()
+})
+
+onBeforeUnmount(() => heightObserver?.disconnect())
 </script>
 
 <template>
@@ -34,19 +54,23 @@ onMounted(refresh)
     <p class="landing-lead">由 Cyrene2008 维护，逐条筛选；把值得被认真对待的文字，带进课堂与自习时光。点击卡片即可换一句。</p>
 
     <FluentCard class="landing-quote" role="button" tabindex="0" @click="refresh" @keydown.enter="refresh" @keydown.space.prevent="refresh">
-      <template v-if="state === 'ready' && quote">
-        <p class="landing-quote-text">{{ quote.value }}</p>
-        <div class="landing-quote-meta">
-          <span>{{ [quote.author, quote.from].filter(Boolean).join(' · ') }}</span>
-          <span>{{ (quote.category || []).join(' / ') }}</span>
+      <div ref="bodyRef" class="landing-quote-body">
+        <div ref="innerRef" class="landing-quote-inner">
+          <template v-if="state === 'ready' && quote">
+            <p class="landing-quote-text" :class="{ 'is-typing': isTyping }">{{ typedText }}</p>
+            <div class="landing-quote-meta">
+              <span>{{ [quote.author, quote.from].filter(Boolean).join(' · ') }}</span>
+              <span>{{ (quote.category || []).join(' / ') }}</span>
+            </div>
+            <p class="landing-quote-hint">♪ 点击换一句</p>
+          </template>
+          <template v-else-if="state === 'error'">
+            <p class="landing-quote-text">暂时无法获取语录，请稍后再试。</p>
+            <p class="landing-quote-hint">点击重试</p>
+          </template>
+          <p v-else class="landing-quote-text">正在获取语录…</p>
         </div>
-        <p class="landing-quote-hint">♪ 点击换一句</p>
-      </template>
-      <template v-else-if="state === 'error'">
-        <p class="landing-quote-text">暂时无法获取语录，请稍后再试。</p>
-        <p class="landing-quote-hint">点击重试</p>
-      </template>
-      <p v-else class="landing-quote-text">正在获取语录…</p>
+      </div>
     </FluentCard>
 
     <nav class="landing-actions" aria-label="相关链接">
@@ -60,8 +84,10 @@ onMounted(refresh)
     <div class="landing-code">
       <pre>GET https://time.cyrene.hk/api/v1/quote?format=json
 GET https://time.cyrene.hk/api/v1/quote?format=json&amp;category=崩铁
-GET https://time.cyrene.hk/api/v1/quote?format=json&amp;category=崩铁,原神
-GET https://time.cyrene.hk/api/v1/quote/categories</pre>
+GET https://time.cyrene.hk/api/v1/quote?format=json&amp;category=崩铁,人民日报
+GET https://time.cyrene.hk/api/v1/quote/categories
+GET https://time.cyrene.hk/api/v1/quote/count
+GET https://time.cyrene.hk/api/v1/quote/count?category=崩铁</pre>
       <pre>{
   "value": "……",
   "author": "CyTime",

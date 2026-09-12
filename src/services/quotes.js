@@ -34,6 +34,15 @@ export async function fetchQuoteCategories(signal) {
   return Array.isArray(response?.categories) ? response.categories.map(String).filter(Boolean) : []
 }
 
+export async function fetchQuoteStats(signal) {
+  const response = await fetchJson('https://time.cyrene.hk/api/v1/quote/count', signal)
+  const total = Number(response?.total)
+  return {
+    total: Number.isFinite(total) ? total : 0,
+    categories: response?.categories && typeof response.categories === 'object' ? response.categories : {}
+  }
+}
+
 export async function readQuoteFile(file) {
   const text = await file.text()
   if (file.name.toLowerCase().endsWith('.json')) {

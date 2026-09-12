@@ -68,7 +68,12 @@ export const useQuotesStore = defineStore('quotes', () => {
       const next = (choices.length ? choices : selected.quotes.map(normalize))[Math.floor(Math.random() * (choices.length || selected.quotes.length))]
       current.value = next.text
       source.value = selected.id
-      const localMetadata = selected.id === 'daily' ? contentStore.content.quoteMetadata?.[next.text] || {} : { work: next.work || '' }
+      const savedMeta = contentStore.content.quoteMetadata?.[next.text] || {}
+      const localMetadata = selected.id === 'daily'
+        ? savedMeta
+        : selected.id === 'flameJourney'
+          ? { author: savedMeta.author || '德谬歌', work: savedMeta.work || 'HSR' }
+          : { work: next.work || savedMeta.work || '' }
       metadata.value = { source: selected.id, sourceName: selected.name, author: localMetadata.author || '', work: localMetadata.work || '' }
     }
   }

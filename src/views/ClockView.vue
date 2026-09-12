@@ -22,6 +22,17 @@ const clockRef = ref(null)
 useDigitBox(clockRef, [() => settingsStore.settings.fontFamily, () => settingsStore.settings.clockFontScale])
 const viewRef = ref(null)
 useSmoothShift(() => viewRef.value)
+const quoteRef = ref(null)
+
+function handleStageClick(event) {
+  if (!settingsStore.settings.showQuote || !quote.value) return
+  if (event.target?.closest?.('button, a, input, select, textarea, label, [role="button"], .homework-panel')) return
+  const element = quoteRef.value
+  if (!element) return
+  const rect = element.getBoundingClientRect()
+  if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return
+  quotesStore.refresh()
+}
 const dateText = computed(() => `${formatDate(date.value)} ${new Intl.DateTimeFormat('zh-CN', { weekday: 'long' }).format(date.value)}`)
 const { almanac } = useAlmanac(() => date.value)
 const almanacShort = (list, max = 4) => list.slice(0, max).join(' · ')
@@ -52,7 +63,7 @@ const quoteAttribution = computed(() => {
 </script>
 
 <template>
-  <section ref="viewRef" class="clock-view">
+  <section ref="viewRef" class="clock-view" @click="handleStageClick">
     <div class="clock-aura aura-one"></div><div class="clock-aura aura-two"></div>
     <HomeworkPanel v-if="settingsStore.settings.showHomework && !settingsStore.examModeActive" />
     <div class="clock-eyebrow">昔光涟涟，时不我待</div>
@@ -65,6 +76,6 @@ const quoteAttribution = computed(() => {
       <div v-if="settingsStore.settings.showDate || (settingsStore.settings.showLunar && almanac)" class="hero-date"><template v-if="settingsStore.settings.showDate">{{ dateText }}</template><span v-if="settingsStore.settings.showLunar && almanac" class="hero-lunar">{{ almanac.lunarText }}<template v-if="almanac.festival"> · {{ almanac.festival }}</template></span></div>
     </div>
     <div v-if="!settingsStore.examModeActive && settingsStore.settings.showSchedule && (currentLesson || nextLesson)" class="clock-schedule"><strong>{{ currentLesson ? `正在上课 · ${currentLesson.subject}` : `下一节 · ${nextLesson.subject}` }}</strong><span>{{ currentLesson ? `${currentLesson.startAt} - ${currentLesson.endAt}` : `${nextLesson.startAt} 开始` }}<template v-if="(currentLesson || nextLesson).room"> · {{ (currentLesson || nextLesson).room }}</template></span></div>
-    <p v-if="!settingsStore.examModeActive && settingsStore.settings.showQuote" class="hero-quote" :class="[`quote-${settingsStore.settings.quoteAnimation}`, { 'is-typing': isTyping }]"><template v-if="quote"><span class="quote-text">{{ quote }}</span><small v-if="quoteAttribution">{{ quoteAttribution }}</small></template></p>
+    <p v-if="!settingsStore.examModeActive && settingsStore.settings.showQuote" ref="quoteRef" class="hero-quote" :class="[`quote-${settingsStore.settings.quoteAnimation}`, { 'is-typing': isTyping }]"><template v-if="quote"><span class="quote-text">{{ quote }}</span><small v-if="quoteAttribution">{{ quoteAttribution }}</small></template></p>
   </section>
 </template>

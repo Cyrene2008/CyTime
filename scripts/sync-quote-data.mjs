@@ -69,6 +69,33 @@ export async function onRequest(context) {
 }
 `
 
+const countFile = `${header}
+const quoteCatalog = ${JSON.stringify(catalog, null, 2)}
+const categories = ${JSON.stringify(categories)}
+
+${landingBlock}
+
+export async function onRequest(context) {
+  if (context.request.method !== 'GET') return landing()
+  const url = new URL(context.request.url)
+  const requested = (url.searchParams.get('category') || '').trim()
+  const counts = {}
+  let total = 0
+  for (const category of categories) {
+    counts[category] = quoteCatalog[category].length
+    total += counts[category]
+  }
+  const respond = (body, status = 200) => new Response(JSON.stringify(body), {
+    status,
+    headers: ${jsonHeaders}
+  })
+  if (!requested) return respond({ total, categories: counts })
+  if (requested.includes(',')) return respond({ error: '一次只能查询一个分类' }, 400)
+  if (!categories.includes(requested)) return respond({ error: '分类不存在', category: requested }, 404)
+  return respond({ category: requested, count: counts[requested] })
+}
+`
+
 const landingFile = `${header}
 ${landingBlock}
 
@@ -80,6 +107,7 @@ export async function onRequest() {
 const targets = [
   ['../functions/api/v1/quote/index.js', quoteFile],
   ['../functions/api/v1/quote/categories.js', categoriesFile],
+  ['../functions/api/v1/quote/count.js', countFile],
   ['../functions/api/[[path]].js', landingFile]
 ]
 

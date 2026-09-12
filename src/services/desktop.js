@@ -43,14 +43,6 @@ export async function fetchJson(url, signal) {
   return response.json()
 }
 
-export async function fetchNetworkTime() {
-  if (isDesktop()) return invoke('desktop_fetch_network_time')
-  const data = await fetchJson('https://worldtimeapi.org/api/timezone/Etc/UTC')
-  const unixSeconds = Number(data?.unixtime)
-  if (!Number.isFinite(unixSeconds)) throw new Error('Time service returned no unix time')
-  return unixSeconds * 1000
-}
-
 export async function initDesktopBridge(onUri) {
   if (!isDesktop()) return () => {}
   let lastUri = ''
