@@ -89,13 +89,33 @@ fn desktop_write_file(path: String, content: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn desktop_check_update() -> Result<Value, String> {
-    desktop_fetch_json("https://api.github.com/repos/Cyrene2008/CyTime/releases/latest".to_string()).await
+    let mirrors = [
+        "https://gh.昔涟.cn/repos/Cyrene2008/CyTime/releases/latest",
+        "https://v4.gh-proxy.com/repos/Cyrene2008/CyTime/releases/latest",
+        "https://api.github.com/repos/Cyrene2008/CyTime/releases/latest",
+    ];
+    let mut last_error = String::new();
+    for url in mirrors {
+        match desktop_fetch_json(url.to_string()).await {
+            Ok(value) => return Ok(value),
+            Err(error) => last_error = error,
+        }
+    }
+    Err(last_error)
 }
 
 #[tauri::command]
 async fn desktop_download_update(url: String) -> Result<(), String> {
     let parsed = reqwest::Url::parse(&url).map_err(|error| error.to_string())?;
-    if parsed.scheme() != "https" || parsed.host_str() != Some("github.com") { return Err("update URL is not allowed".to_string()); }
+    let host = parsed.host_str().unwrap_or_default();
+    let allowed = parsed.scheme() == "https" && (
+        host == "github.com"
+            || host.ends_with(".gh-proxy.com")
+            || host.ends_with(".昔涟.cn")
+    );
+    if !allowed {
+        return Err("update URL is not allowed".to_string());
+    }
     let bytes = reqwest::Client::builder().timeout(Duration::from_secs(120)).build().map_err(|error| error.to_string())?.get(parsed).send().await.map_err(|error| error.to_string())?.error_for_status().map_err(|error| error.to_string())?.bytes().await.map_err(|error| error.to_string())?;
     let path = std::env::temp_dir().join("CyTime-update.exe");
     fs::write(&path, bytes).map_err(|error| error.to_string())?;
@@ -220,6 +240,8 @@ async fn desktop_fetch_json(url: String) -> Result<Value, String> {
         "ipwho.is",
         "ipapi.co",
         "api.bigdatacloud.net",
+        "gh.昔涟.cn",
+        "v4.gh-proxy.com",
         "api.github.com",
     ];
     if parsed.scheme() != "https" || !parsed.host_str().is_some_and(|host| allowed_hosts.contains(&host)) {
