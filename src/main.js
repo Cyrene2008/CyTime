@@ -62,8 +62,10 @@ async function syncServiceWorker() {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(registration => {
       const check = () => registration.update().catch(() => {})
-      window.setInterval(check, 30 * 60 * 1000)
+      window.setTimeout(check, 5000)
+      window.setInterval(check, 10 * 60 * 1000)
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check() })
+      window.addEventListener('online', check)
     }).catch(() => {})
   }, { once: true })
 }
