@@ -8,7 +8,9 @@
   "packageManager": "bun@1.3.14",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/sync-quote-data.mjs",
     "build": "vite build",
+    "sync:quotes": "node scripts/sync-quote-data.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
