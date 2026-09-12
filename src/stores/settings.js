@@ -11,6 +11,8 @@ export const defaultSettings = {
   uriRegistration: true,
   showClockSeconds: true,
   showDate: true,
+  showLunar: true,
+  showAlmanac: true,
   showWeather: true,
   showQuote: true,
   showImportantDays: true,
