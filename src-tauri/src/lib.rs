@@ -256,6 +256,25 @@ fn desktop_window_action(app: AppHandle, action: String) -> Result<(), String> {
     }.map_err(|error| error.to_string())
 }
 
+#[cfg(windows)]
+fn clear_stale_webview_cache() {
+    let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") else { return };
+    let root = std::path::PathBuf::from(local_app_data).join("hk.cyrene.cytime");
+    let marker = root.join("webview-build.txt");
+    let current = env!("CYTIME_BUILD_ID");
+    if std::fs::read_to_string(&marker).map(|value| value.trim() == current).unwrap_or(false) {
+        return;
+    }
+    for name in ["Cache", "Code Cache", "GPUCache", "Service Worker", "DawnGraphiteCache", "DawnWebGPUCache", "Session Storage"] {
+        let _ = std::fs::remove_dir_all(root.join("EBWebView").join("Default").join(name));
+    }
+    let _ = std::fs::create_dir_all(&root);
+    let _ = std::fs::write(&marker, current);
+}
+
+#[cfg(not(windows))]
+fn clear_stale_webview_cache() {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let pending_uris = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -269,6 +288,7 @@ pub fn run() {
             return;
         }
     };
+    clear_stale_webview_cache();
     let auto_start = std::env::args().any(|argument| argument == "--cyrene-auto-start");
     tauri::Builder::default()
         .manage(PendingUris(pending_uris.clone()))
