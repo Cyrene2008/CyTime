@@ -64,6 +64,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        cacheId: `cytime-${pkg.version}-${buildId || 'dev'}`,
+        cleanupOutdatedCaches: true,
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {

@@ -53,7 +53,19 @@ async function syncServiceWorker() {
     } catch {}
     return
   }
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => {}), { once: true })
+  const hadController = Boolean(navigator.serviceWorker.controller)
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || window.__cytimeReloading) return
+    window.__cytimeReloading = true
+    window.location.reload()
+  })
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(registration => {
+      const check = () => registration.update().catch(() => {})
+      window.setInterval(check, 30 * 60 * 1000)
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check() })
+    }).catch(() => {})
+  }, { once: true })
 }
 
 async function bootstrap() {
