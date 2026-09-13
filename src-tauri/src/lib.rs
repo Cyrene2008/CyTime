@@ -136,11 +136,12 @@ fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Re
     match mode.as_str() {
         "mini" => {
             window.set_resizable(false).map_err(|error| error.to_string())?;
-            window.set_min_size(Some(Size::Logical(LogicalSize::new(1280.0, 960.0)))).map_err(|error| error.to_string())?;
-            window.set_max_size(Some(Size::Logical(LogicalSize::new(1280.0, 960.0)))).map_err(|error| error.to_string())?;
+            window.set_min_size(Some(Size::Logical(LogicalSize::new(960.0, 720.0)))).map_err(|error| error.to_string())?;
+            window.set_max_size(Some(Size::Logical(LogicalSize::new(960.0, 720.0)))).map_err(|error| error.to_string())?;
             window.set_fullscreen(false).map_err(|error| error.to_string())?;
             window.unmaximize().map_err(|error| error.to_string())?;
-            window.set_size(Size::Logical(LogicalSize::new(1280.0, 960.0))).map_err(|error| error.to_string())?;
+            window.set_size(Size::Logical(LogicalSize::new(960.0, 720.0))).map_err(|error| error.to_string())?;
+            window.center().ok();
         }
         "normal" => {
             window.set_resizable(true).map_err(|error| error.to_string())?;
@@ -149,6 +150,7 @@ fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Re
             window.set_fullscreen(false).map_err(|error| error.to_string())?;
             window.unmaximize().map_err(|error| error.to_string())?;
             window.set_size(Size::Logical(LogicalSize::new(1600.0, 1000.0))).map_err(|error| error.to_string())?;
+            window.center().ok();
         }
         "max" => {
             window.set_resizable(true).map_err(|error| error.to_string())?;
