@@ -19,8 +19,6 @@ export const defaultSettings = {
   showDayProgress: true,
   showHomework: false,
   showSchedule: true,
-  weatherAlertEnabled: true,
-  weatherForecastEnabled: true,
   homeworkPosition: 'left',
   homeworkFontSize: 13,
   autostart: false,
