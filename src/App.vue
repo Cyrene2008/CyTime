@@ -94,10 +94,20 @@ function syncContentSafeTop() {
   if (!shell) return
   const shellRect = shell.getBoundingClientRect()
   const scale = shell.offsetWidth ? shellRect.width / shell.offsetWidth : 1
-  const bottomOf = element => element ? (element.getBoundingClientRect().bottom - shellRect.top) / scale : 0
+  const bottomOf = element => {
+    if (!element) return 0
+    if (settingsStore.examModeActive && element === navRef.value) return 0
+    return (element.getBoundingClientRect().bottom - shellRect.top) / scale
+  }
   const safeTop = Math.max(bottomOf(statusDockRef.value), bottomOf(navRef.value))
   shell.style.setProperty('--content-safe-top', `${Math.max(0, Math.ceil(safeTop + 10))}px`)
   shell.style.setProperty('--nav-safe-top', `${Math.ceil(bottomOf(statusDockRef.value) + 12)}px`)
+  if (statusDockRef.value) {
+    const dockWidth = statusDockRef.value.offsetWidth
+    const maxScale = dockWidth > 0 ? shell.offsetWidth / dockWidth : 1
+    const userScale = (Number(settingsStore.settings.statusDockScale) || 100) / 100
+    shell.style.setProperty('--status-dock-scale', String(Math.min(userScale, maxScale)))
+  }
 }
 
 function observeSafeAreas() {
