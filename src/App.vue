@@ -227,12 +227,12 @@ function playCompletionMelody() {
   let at = 0
   COMPLETION_MELODY.forEach(([note, beats], index) => {
     const duration = beats * beat
-    if (note) playBell(JIANPU[note], at, index % 2 ? 0.038 : 0.046, Math.max(0.16, Math.min(0.8, duration * 0.95)))
+    if (note) playBell(JIANPU[note], at, index % 2 ? 0.065 : 0.08, Math.max(0.16, Math.min(0.8, duration * 0.95)))
     at += duration
   })
 }
 
-function playBell(frequency, delay = 0, volume = 0.05, duration = 0.9) {
+function playBell(frequency, delay = 0, volume = 0.08, duration = 0.9) {
   try {
     prepareAudio()
     if (!audioContext) return
@@ -268,7 +268,7 @@ function showTaskNotice(message) {
 
 function onCountdownWarning(event) {
   const { task, seconds } = event.detail || {}
-  if (settingsStore.settings.soundEnabled) playBell(1567.98, 0, 0.032, 0.22)
+  if (settingsStore.settings.soundEnabled) playBell(1567.98, 0, 0.06, 0.22)
   navigator.vibrate?.(80)
   notifyTask('CyTime 倒计时提醒', `${task?.label || '倒计时'} 还剩 ${seconds} 秒`)
   showTaskNotice(`${task?.label || '倒计时'} · ${seconds} 秒`)
