@@ -2,7 +2,7 @@ import { fetchJson } from './desktop'
 
 export const quoteApiEndpoints = [
   { id: 'cf', label: 'Cloudflare（time.cyrene.hk）', base: 'https://time.cyrene.hk/api/v1/quote' },
-  { id: 'server', label: '自建服务器（quote.cyrene.hk）', base: 'https://quote.cyrene.hk/api/v1/quote' }
+  { id: 'server', label: '昔言官方源（quote.cyrene.hk）', base: 'https://quote.cyrene.hk/api/v1/quote' }
 ]
 
 export function quoteApiOrder(preferred = 'cf') {
