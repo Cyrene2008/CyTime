@@ -57,6 +57,11 @@ function setField(field, event) {
   event.target.value = String(value).padStart(2, '0')
 }
 
+function guardSubmitClick(event) {
+  const button = event.target?.closest?.('button')
+  if (button && button.type === 'submit' && !button.closest('.dialog-actions')) event.preventDefault()
+}
+
 function toDateValue(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
@@ -105,7 +110,7 @@ watch(settingsOpen, open => { if (open) window.__cytimeShowControls?.() })
     </div>
 
     <div v-if="settingsOpen" class="focus-dialog-layer" @click.self="settingsOpen = false">
-      <form class="focus-dialog countdown-dialog surface-panel" @submit.prevent="addTask">
+      <form class="focus-dialog countdown-dialog surface-panel" @submit.prevent="addTask" @click="guardSubmitClick">
         <div class="dialog-heading"><div><span class="eyebrow">COUNTDOWN</span><h2>设置倒计时</h2></div><button type="button" class="dialog-close" @click="settingsOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></div>
         <section class="duration-editor"><h3>时间设置</h3><div class="duration-columns"><div v-for="item in [{ key: 'hours', label: '时', value: hours }, { key: 'minutes', label: '分', value: minutes }, { key: 'seconds', label: '秒', value: seconds }]" :key="item.key" class="duration-column"><button type="button" @click="adjust(item.key, 1)">+</button><label class="duration-value"><input :value="String(item.value).padStart(2, '0')" inputmode="numeric" maxlength="2" :aria-label="`${item.label}数`" @focus="$event.target.select()" @change="setField(item.key, $event)" @keydown.enter.prevent /><span>{{ item.label }}</span></label><button type="button" @click="adjust(item.key, -1)">−</button></div></div></section>
         <section class="quick-duration"><h3>快速设置</h3><div class="quick-options"><button v-for="item in [{ value: 600, label: '10分钟' }, { value: 1800, label: '30分钟' }, { value: 4500, label: '75分钟' }]" :key="item.label" type="button" :class="{ active: quickChoice === item.value }" @click="selectQuick(item.value)">{{ item.label }}</button></div></section>

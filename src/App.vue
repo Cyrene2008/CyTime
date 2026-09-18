@@ -61,6 +61,7 @@ let safeAreaObserver
 let syncAfterVisibilityChange
 let stopTaskWatch
 let stopSafeAreaWatch
+let stopViewPaddingWatch
 let stopDesktopBridge
 let timeSyncTimer
 let stopRightClick
@@ -107,6 +108,34 @@ function syncContentSafeTop() {
     const maxScale = dockWidth > 0 ? shell.offsetWidth / dockWidth : 1
     const userScale = (Number(settingsStore.settings.statusDockScale) || 100) / 100
     shell.style.setProperty('--status-dock-scale', String(Math.min(userScale, maxScale)))
+  }
+  updateViewPadding()
+}
+
+function updateViewPadding() {
+  const shell = shellRef.value
+  if (!shell) return
+  const shellRect = shell.getBoundingClientRect()
+  const scale = shell.offsetWidth ? shellRect.width / shell.offsetWidth : 1
+  const dockBottom = statusDockRef.value ? (statusDockRef.value.getBoundingClientRect().bottom - shellRect.top) / scale : 0
+  const navBottom = !settingsStore.examModeActive && navRef.value ? (navRef.value.getBoundingClientRect().bottom - shellRect.top) / scale : 0
+  const safeTop = Math.max(0, dockBottom, navBottom) + 10
+  for (const view of shell.querySelectorAll('.clock-view, .focus-view')) {
+    const viewHeight = view.getBoundingClientRect().height / scale
+    const padBottom = parseFloat(getComputedStyle(view).paddingBottom) || 0
+    const children = [...view.children].filter(element => {
+      const position = getComputedStyle(element).position
+      return position !== 'absolute' && position !== 'fixed' && element.getBoundingClientRect().height > 0
+    })
+    if (!children.length) { view.style.paddingTop = ''; continue }
+    const tops = children.map(element => element.getBoundingClientRect().top)
+    const bottoms = children.map(element => element.getBoundingClientRect().bottom)
+    const content = (Math.max(...bottoms) - Math.min(...tops)) / scale
+    const minTop = 24
+    const available = viewHeight - padBottom
+    const centered = minTop + Math.max(0, (available - minTop - content) / 2)
+    const top = centered >= safeTop ? centered : Math.max(minTop, Math.min(safeTop, available - content))
+    view.style.paddingTop = `${Math.ceil(top)}px`
   }
 }
 
@@ -452,6 +481,10 @@ onMounted(async () => {
     observeSafeAreas()
   })
   nextTick(observeSafeAreas)
+  stopViewPaddingWatch = watch([() => Math.floor(timeStore.now / 1000), () => route.path], async () => {
+    await nextTick()
+    updateViewPadding()
+  })
   syncWakeLock()
   window.setTimeout(schedulePurePrompt, 550)
 })
@@ -474,6 +507,7 @@ onUnmounted(() => {
   safeAreaObserver?.disconnect()
   stopTaskWatch?.()
   stopSafeAreaWatch?.()
+  stopViewPaddingWatch?.()
   stopDesktopBridge?.()
   window.clearTimeout(noticeTimer)
   closePurePrompt()

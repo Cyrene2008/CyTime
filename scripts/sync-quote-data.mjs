@@ -1,6 +1,7 @@
-// 将 api/data/quotes.jsonc 与 api/landing.html 同步为 Cloudflare Pages Functions。
-// 说明：functions/ 目录下每个 .js 都会成为路由，因此这里把数据与页面直接内联进函数文件，
-// 不创建共享数据模块，避免产生意外路由。
+// 将 api/data/quotes.jsonc 同步为 Cloudflare Pages Functions。
+// 说明：functions/ 目录下每个 .js 都会成为路由，因此这里把数据直接内联进函数文件，
+// 不创建共享数据模块，避免产生意外路由；API 说明页已迁移至 https://quote.cyrene.hk/，
+// 本域名下的 /api 落地页统一 302 跳转过去。
 // 用法：node scripts/sync-quote-data.mjs（bun run build 前会自动执行）
 import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { dirname } from 'node:path'
@@ -10,20 +11,20 @@ import { parseJsonc } from '../api/data/jsonc.js'
 const source = fileURLToPath(new URL('../api/data/quotes.jsonc', import.meta.url))
 const catalog = parseJsonc(readFileSync(source, 'utf8'))
 const categories = Object.keys(catalog)
-const landingHtml = readFileSync(new URL('../api/landing.html', import.meta.url), 'utf8')
 
 const header = [
   '// 该文件由 scripts/sync-quote-data.mjs 自动生成，请勿手动修改。',
-  '// 语录内容请编辑 api/data/quotes.jsonc，说明页请编辑 api/landing.html，然后运行 bun run sync:quotes 或 bun run build。'
+  '// 语录内容请编辑 api/data/quotes.jsonc，然后运行 bun run sync:quotes 或 bun run build。'
 ].join('\n')
 
-const landingBlock = `const landingHtml = ${JSON.stringify(landingHtml)}
+const landingBlock = `const DOCS_URL = 'https://quote.cyrene.hk/'
 
 function landing() {
-  return new Response(landingHtml, {
+  return new Response(null, {
+    status: 302,
     headers: {
-      'Cache-Control': 'no-store, max-age=0',
-      'Content-Type': 'text/html; charset=utf-8'
+      Location: DOCS_URL,
+      'Cache-Control': 'no-store, max-age=0'
     }
   })
 }`
@@ -123,4 +124,4 @@ try {
   rmSync(dirname(stale), { recursive: true, force: true })
 } catch {}
 
-console.log(`synced ${categories.length} categories + landing page -> functions/api/*`)
+console.log(`synced ${categories.length} categories + docs redirect -> functions/api/*`)

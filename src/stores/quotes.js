@@ -49,7 +49,7 @@ export const useQuotesStore = defineStore('quotes', () => {
       const apiCategories = resolveApiCategories(settings)
       for (const sourceId of ordered) {
         try {
-          const result = await fetchCloudQuote(sourceId, requestController.signal, apiCategories)
+          const result = await fetchCloudQuote(sourceId, requestController.signal, apiCategories, settings.quoteApiEndpoint)
           current.value = result.text
           source.value = 'cloud'
           metadata.value = { source: 'cloud', sourceName: result.sourceName, author: result.author, work: result.work }

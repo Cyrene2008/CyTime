@@ -67,6 +67,11 @@ function openEditor(item = null) {
 
 function closeEditor() { editorOpen.value = false }
 
+function guardSubmitClick(event) {
+  const button = event.target?.closest?.('button')
+  if (button && button.type === 'submit' && !button.closest('.dialog-actions')) event.preventDefault()
+}
+
 function saveHomework() {
   if (!content.value.trim()) { formError.value = '请填写作业内容'; return }
   const subjectName = subjectChoice.value === CUSTOM_SUBJECT ? customSubject.value.trim() : subjectChoice.value
@@ -113,7 +118,7 @@ onUnmounted(() => window.clearInterval(rotateTimer))
 
     <Teleport to="body">
       <div v-if="editorOpen" class="focus-dialog-layer" @click.self="closeEditor">
-        <form class="focus-dialog homework-dialog surface-panel" @submit.prevent="saveHomework">
+        <form class="focus-dialog homework-dialog surface-panel" @submit.prevent="saveHomework" @click="guardSubmitClick">
           <div class="dialog-heading"><div><span class="eyebrow">HOMEWORK</span><h2>{{ editingId ? '编辑作业' : '布置作业' }}</h2></div><button type="button" class="dialog-close" aria-label="关闭作业编辑" @click="closeEditor"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></div>
           <div class="homework-form">
             <label class="dialog-label">科目<FluentSelect v-model="subjectChoice" :options="subjectOptions" /></label>

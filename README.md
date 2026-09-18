@@ -29,7 +29,7 @@ CyTime 是一款面向学生与教育场景的桌面 / 网页时钟应用：大�
 ```bash
 bun install        # 安装依赖
 bun run dev        # 启动开发服务器
-bun run build      # 构建网页端（自动构建落地页并同步语录 Functions）
+bun run build      # 构建网页端（自动同步语录 Functions）
 bun run preview    # 预览构建产物
 ```
 
@@ -71,11 +71,8 @@ bun run tauri:build  # 打包 Windows 安装包（NSIS）
 api/
   data/quotes.jsonc      # 云端语录唯一数据源（分类 -> 语录数组）
   v1/quote/              # Vercel 风格备用接口
-  landing-src/           # API 说明页（Vue 3 + VueFluentWidgets 源码）
-  landing.html           # 构建产物（单文件，供 Functions 内联）
 functions/               # Cloudflare Pages Functions（由脚本生成语录接口）
 scripts/
-  build-landing.mjs      # 构建落地页
   sync-quote-data.mjs    # 同步语录数据到 Functions
 src/
   components/            # 通用组件（语录来源、作业板等）
