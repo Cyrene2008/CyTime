@@ -195,3 +195,18 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 
 .focus-dialog-layer { padding: 14px; }
 .focus-dialog { max-height: calc(100vh - 28px); max-height: calc(100dvh - 28px); }
+
+.clock-view, .focus-view { transition: padding-top .28s cubic-bezier(.2, .8, .2, 1); }
+.mini-mode .focus-dialog-layer { padding: 8px; }
+.mini-mode .focus-dialog { width: min(520px, 100%); max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); }
+.mini-mode .dialog-heading { padding: 12px 14px 10px; }
+.mini-mode .dialog-heading h2 { font-size: 16px; }
+.mini-mode .duration-editor, .mini-mode .quick-duration { padding: 12px 14px; }
+.mini-mode .duration-editor h3, .mini-mode .quick-duration h3 { margin-bottom: 10px; }
+.mini-mode .duration-columns { gap: 12px; }
+.mini-mode .duration-column { gap: 5px; width: 64px; }
+.mini-mode .duration-column button { width: 28px; height: 28px; font-size: 16px; }
+.mini-mode .duration-column input { font-size: 24px; width: 40px; }
+.mini-mode .dialog-label { margin: 10px 14px 0; }
+.mini-mode .advanced-target { margin: 10px 14px 0; }
+.mini-mode .dialog-actions { padding: 8px 14px 12px; }
