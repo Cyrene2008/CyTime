@@ -109,7 +109,7 @@ html[data-font="wengfaluosi"] .hero-clock { font-size: clamp(78px, calc(var(--cl
 .app-root.titlebar-hidden .app-titlebar { display: none; }
 .hero-clock, .focus-clock { font-family: var(--font-num); letter-spacing: 0; }.hero-clock { font-size: clamp(60px, calc(var(--clock-font-scale, 11) * 16px), 360px); }.focus-clock { font-size: clamp(60px, calc(var(--clock-font-scale, 11) * 16px), 300px); }.settings-scroll .range-control strong { font-family: var(--font-ui); }
 html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-clock { font-size: clamp(80px, calc(var(--clock-font-scale, 11) * 19px), 420px); }
-.mini-mode .status-dock, .mini-mode .clock-footer, .mini-mode .app-meta, .mini-mode .task-docks, .mini-mode .task-notice, .mini-mode .pure-prompt-layer { display: none; }.mini-mode .mode-nav { top: max(18%, var(--nav-safe-top, 76px)); opacity: 1; pointer-events: auto; }.mini-mode .clock-stage { inset: 0; }.mini-mode .focus-view { padding-bottom: 20px; }.mini-mode .hero-date-block, .mini-mode .hero-quote { display: none; }
+.mini-mode .status-dock, .mini-mode .clock-footer, .mini-mode .app-meta, .mini-mode .task-docks, .mini-mode .task-notice, .mini-mode .pure-prompt-layer { display: none; }.mini-mode .mode-nav { top: max(46px, var(--nav-safe-top, 46px)); opacity: 1; pointer-events: auto; }.mini-mode .clock-stage { inset: 0; }.mini-mode .focus-view { padding-bottom: 20px; }.mini-mode .hero-date-block, .mini-mode .hero-quote { display: none; }
 .mini-mode .clock-footer { display: flex; }.mini-mode .footer-settings, .mini-mode .footer-center-actions button:nth-child(2), .mini-mode .app-meta { display: none; }.mini-mode .footer-center-actions { left: 50%; }
 .window-mode-normal .homework-panel, .window-mode-mini .homework-panel, .mini-mode .homework-panel, .mini-mode .clock-schedule { display: none; }.hero-quote { position: relative; z-index: 6; width: min(64vw, 900px); margin: 24px 0 0; pointer-events: none; }.hero-quote .quote-text, .hero-quote small { pointer-events: none; cursor: default; text-align: center; }.clock-schedule { position: relative; z-index: 5; pointer-events: none; }.homework-panel { z-index: 1; }
 .mini-mode .app-titlebar-controls button:nth-child(2) { color: var(--accent); }
@@ -192,3 +192,6 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .exam-mode .clock-view, .exam-mode .focus-view { padding-bottom: clamp(56px, 8vh, 84px); }
 .mini-mode .clock-view { padding-bottom: clamp(64px, 10vh, 96px); }
 .mini-mode .focus-view { padding-bottom: 76px; }
+
+.focus-dialog-layer { padding: 14px; }
+.focus-dialog { max-height: calc(100vh - 28px); max-height: calc(100dvh - 28px); }
