@@ -66,7 +66,16 @@ export const defaultSettings = {
   uiScale: 100,
   timeSyncEnabled: true,
   timeSyncSource: 'system',
-  timeSyncInterval: 60
+  timeSyncInterval: 60,
+  widgetFontSize: 17,
+  widgetLabelFontSize: 11,
+  statusWeatherFontSize: 15,
+  countdownFontSize: 22,
+  quoteTextColor: '#b287a1',
+  quoteAuthorColor: '#b287a1',
+  statusWeatherColor: '#e0c0d3',
+  taskWidgetColor: '#e0c0d3',
+  taskWidgetAccentColor: '#ea5ec1'
 }
 
 const cloneSettings = value => JSON.parse(JSON.stringify(value))
@@ -101,6 +110,20 @@ export function applyTheme(settings) {
   root.style.setProperty('--homework-width', `${Math.max(200, Math.min(520, Number(settings.homeworkWidth) || 300))}px`)
   root.style.setProperty('--homework-offset-x', `${Math.max(0, Math.min(240, Number(settings.homeworkOffsetX) || 0))}px`)
   root.style.setProperty('--ui-scale', String(Math.max(50, Math.min(200, settings.uiScale)) / 100))
+  root.style.setProperty('--widget-font-size', `${Math.max(10, Math.min(32, Number(settings.widgetFontSize) || 17))}px`)
+  root.style.setProperty('--widget-label-font-size', `${Math.max(8, Math.min(20, Number(settings.widgetLabelFontSize) || 11))}px`)
+  root.style.setProperty('--status-weather-font-size', `${Math.max(10, Math.min(28, Number(settings.statusWeatherFontSize) || 15))}px`)
+  root.style.setProperty('--countdown-font-size', `${Math.max(12, Math.min(40, Number(settings.countdownFontSize) || 22))}px`)
+  if (settings.quoteTextColor) root.style.setProperty('--quote-text-color', settings.quoteTextColor)
+  else root.style.removeProperty('--quote-text-color')
+  if (settings.quoteAuthorColor) root.style.setProperty('--quote-author-color', settings.quoteAuthorColor)
+  else root.style.removeProperty('--quote-author-color')
+  if (settings.statusWeatherColor) root.style.setProperty('--status-weather-color', settings.statusWeatherColor)
+  else root.style.removeProperty('--status-weather-color')
+  if (settings.taskWidgetColor) root.style.setProperty('--task-widget-color', settings.taskWidgetColor)
+  else root.style.removeProperty('--task-widget-color')
+  if (settings.taskWidgetAccentColor) root.style.setProperty('--task-widget-accent-color', settings.taskWidgetAccentColor)
+  else root.style.removeProperty('--task-widget-accent-color')
 }
 
 export const useSettingsStore = defineStore('settings', () => {

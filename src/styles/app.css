@@ -128,3 +128,15 @@ html[data-font="wengfaluosi"] .focus-clock { font-weight: 400; }
 .task-docks.is-side .task-docks-track { flex-direction: column; align-items: inherit; width: 100%; gap: 8px; }
 .task-docks.is-side .task-widget { flex: 0 0 auto; width: 190px; }
 @media (max-width: 620px) { .task-docks.is-side { top: auto; right: auto; bottom: 74px; left: 50%; width: calc(100% - 20px); max-height: none; flex-direction: row; align-items: flex-end; gap: 8px; overflow: hidden; transform: translateX(-50%); pointer-events: none; } .task-docks.is-side.task-docks-left { right: auto; left: 50%; } .task-docks.is-side .task-docks-track { flex-direction: row; width: max-content; } .task-docks.is-side .task-widget { flex: 0 0 145px; width: 145px; } }
+
+.color-fields { display: grid; gap: 10px; margin-top: 14px; }.color-field { display: flex; align-items: flex-start; gap: 10px; color: var(--text-secondary); font-size: 11px; }.color-field > span { flex: 0 0 110px; padding-top: 8px; }
+
+.status-weather strong { font-size: var(--status-weather-font-size, 15px); }
+.task-widget > strong { font-size: var(--widget-font-size, 17px); }
+.task-widget > span:nth-child(2) { font-size: var(--widget-label-font-size, 11px); }
+.clock-event strong { font-size: var(--countdown-font-size, 22px); }
+.hero-quote { color: var(--quote-text-color, var(--text-muted)); }
+.hero-quote small { color: var(--quote-author-color, var(--text-muted)); }
+.status-weather { color: var(--status-weather-color, var(--text-secondary)); }
+.task-widget { color: var(--task-widget-color, var(--text-secondary)); }
+.task-widget > strong { color: var(--task-widget-accent-color, var(--accent)); }

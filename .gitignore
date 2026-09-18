@@ -59,3 +59,8 @@ src-tauri/bundle/
 
 # Plan
 .plan/
+
+# Temp & cache
+temp/
+.vite/
+*.zip
