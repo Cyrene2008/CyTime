@@ -66,8 +66,8 @@ let timeSyncTimer
 let stopRightClick
 const navItems = [
   { path: '/clock', label: '时钟', icon: 'clock-20-regular' },
-  { path: '/countdown', label: '倒计时', icon: 'timer-20-regular' },
-  { path: '/timer', label: '计时器', icon: 'arrow-clockwise-20-regular' }
+  { path: '/countdown', label: '倒计时', icon: 'arrow-clockwise-20-regular' },
+  { path: '/timer', label: '计时器', icon: 'timer-20-regular' }
 ]
 const activeTaskCount = computed(() => timeStore.activeCountdowns.length + timeStore.activeTimers.length)
 const sideLayoutQuery = typeof window === 'undefined' ? null : window.matchMedia('(min-width: 621px)')
@@ -124,8 +124,8 @@ async function toggleFullscreen() {
     desktopMini.value = false
     window.__cytimeMiniMode = false
     if (fullscreenActive.value) {
-      await setDesktopWindowMode('normal')
-      desktopWindowMode.value = 'normal'
+      await setDesktopWindowMode('max')
+      desktopWindowMode.value = 'max'
       fullscreenActive.value = false
     } else {
       await setDesktopWindowMode('full')
@@ -139,7 +139,25 @@ async function toggleFullscreen() {
   fullscreenActive.value = Boolean(document.fullscreenElement)
 }
 
-function minimizeWindow() { desktopWindowAction('minimize') }
+function minimizeWindow() {
+  if (!isDesktop()) return
+  if (fullscreenActive.value) {
+    desktopMini.value = false
+    window.__cytimeMiniMode = false
+    fullscreenActive.value = false
+    desktopWindowMode.value = 'normal'
+    setDesktopWindowMode('normal')
+    return
+  }
+  if (!desktopMini.value) {
+    desktopMini.value = true
+    window.__cytimeMiniMode = true
+    desktopWindowMode.value = 'mini'
+    setDesktopWindowMode('mini')
+    return
+  }
+  desktopWindowAction('minimize')
+}
 function closeWindow() { desktopWindowAction('close') }
 function startDrag(event) {
   if (!isDesktop() || event.buttons !== 1) return
@@ -472,7 +490,7 @@ onUnmounted(() => {
 
 <template>
   <div class="app-root" :class="{ 'is-desktop': desktopAvailable, 'titlebar-hidden': desktopAvailable && fullscreenActive }">
-    <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" @mousedown="startDrag"><span>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
+    <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" @mousedown="startDrag"><span>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button v-if="!desktopMini" type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
     <div class="app-shell" ref="shellRef" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, [`window-mode-${desktopWindowMode}`]: desktopAvailable }">
     <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息">
       <div v-if="settingsStore.settings.showWeather" class="status-weather"><strong>{{ weatherTemperature }}°</strong><FluentIcon icon="weather-partly-cloudy-day-20-regular" :width="18" /><span>{{ weatherStatus }}</span></div>

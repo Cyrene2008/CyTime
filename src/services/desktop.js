@@ -69,8 +69,8 @@ export function setDesktopWindowMode(mode, reveal = true) {
   return isDesktop() ? invoke('desktop_window_mode', { mode, reveal }) : Promise.resolve(false)
 }
 
-export function setDesktopAutostart(enabled) {
-  return isDesktop() ? invoke('desktop_set_autostart', { enabled }) : Promise.resolve(false)
+export function setDesktopAutostart(enabled, hidden = true) {
+  return isDesktop() ? invoke('desktop_set_autostart', { enabled, hidden }) : Promise.resolve(false)
 }
 
 export function setDesktopUriRegistration(enabled) {

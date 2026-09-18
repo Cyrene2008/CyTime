@@ -2,7 +2,7 @@ import { onBeforeUpdate, onUpdated } from 'vue'
 
 // 在容器内容重排（子元素高度变化）时，用 FLIP 把硬切位移变成平滑过渡。
 // 使用独立的 translate 属性，避免覆盖元素自身的 transform（如数字字体的 scaleX）。
-export function useSmoothShift(getContainer) {
+export function useSmoothShift(getContainer, isEnabled = () => true) {
   let before = new Map()
   const reduceMotion = () => typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
 
@@ -16,7 +16,14 @@ export function useSmoothShift(getContainer) {
 
   onUpdated(() => {
     const container = getContainer()
-    if (!container || reduceMotion()) return
+    if (!container) return
+    if (!isEnabled() || reduceMotion()) {
+      for (const child of [...container.children]) {
+        child.style.transition = 'none'
+        child.style.translate = 'none'
+      }
+      return
+    }
     const children = [...container.children]
     for (const child of children) {
       child.style.transition = 'none'

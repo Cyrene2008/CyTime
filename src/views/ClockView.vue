@@ -21,7 +21,7 @@ const clockParts = computed(() => clock.value.split(':'))
 const clockRef = ref(null)
 useDigitBox(clockRef, [() => settingsStore.settings.fontFamily, () => settingsStore.settings.clockFontScale])
 const viewRef = ref(null)
-useSmoothShift(() => viewRef.value)
+useSmoothShift(() => viewRef.value, () => !isTyping.value)
 const quoteRef = ref(null)
 
 function handleStageClick(event) {
