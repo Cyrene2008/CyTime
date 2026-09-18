@@ -22,6 +22,7 @@ export const defaultSettings = {
   homeworkPosition: 'left',
   homeworkFontSize: 13,
   autostart: false,
+  autostartHidden: true,
   examMode: false,
   preventSleep: false,
   notificationEnabled: true,
@@ -71,11 +72,11 @@ export const defaultSettings = {
   widgetLabelFontSize: 11,
   statusWeatherFontSize: 15,
   countdownFontSize: 22,
-  quoteTextColor: '#b287a1',
-  quoteAuthorColor: '#b287a1',
-  statusWeatherColor: '#e0c0d3',
-  taskWidgetColor: '#e0c0d3',
-  taskWidgetAccentColor: '#ea5ec1'
+  quoteTextColor: '',
+  quoteAuthorColor: '',
+  statusWeatherColor: '',
+  taskWidgetColor: '',
+  taskWidgetAccentColor: ''
 }
 
 const cloneSettings = value => JSON.parse(JSON.stringify(value))

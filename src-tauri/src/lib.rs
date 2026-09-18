@@ -133,6 +133,7 @@ fn desktop_set_uri_registration(app: AppHandle, enabled: bool) -> Result<bool, S
 #[tauri::command]
 fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Result<(), String> {
     let window = app.get_webview_window("main").ok_or_else(|| "main window unavailable".to_string())?;
+    let _ = window.unminimize();
     match mode.as_str() {
         "mini" => {
             window.set_resizable(false).map_err(|error| error.to_string())?;
@@ -163,20 +164,27 @@ fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Re
             window.set_resizable(true).map_err(|error| error.to_string())?;
             window.set_min_size(Some(Size::Logical(LogicalSize::new(1280.0, 720.0)))).map_err(|error| error.to_string())?;
             window.set_max_size(None::<Size>).map_err(|error| error.to_string())?;
+            let _ = window.set_decorations(false);
+            window.unmaximize().map_err(|error| error.to_string())?;
             window.set_fullscreen(true).map_err(|error| error.to_string())?;
         }
         _ => return Err("unknown window mode".to_string())
     }
     if reveal.unwrap_or(true) {
         window.show().map_err(|error| error.to_string())?;
+        let _ = window.unminimize();
         window.set_focus().map_err(|error| error.to_string())?;
     }
     Ok(())
 }
 
 #[cfg(windows)]
-fn scheduled_task_command(executable: &std::path::Path) -> String {
-    format!("\"{}\" --cyrene-auto-start", executable.display())
+fn scheduled_task_command(executable: &std::path::Path, hidden: bool) -> String {
+    if hidden {
+        format!("\"{}\" --cyrene-auto-start", executable.display())
+    } else {
+        format!("\"{}\"", executable.display())
+    }
 }
 
 #[cfg(windows)]
@@ -192,13 +200,14 @@ fn run_scheduled_task(arguments: &[&str], elevated: bool) -> Result<bool, String
 }
 
 #[tauri::command]
-fn desktop_set_autostart(enabled: bool) -> Result<bool, String> {
+fn desktop_set_autostart(enabled: bool, hidden: Option<bool>) -> Result<bool, String> {
     #[cfg(windows)]
     {
         let task_name = "CyTime 昔时时钟";
+        let silent = hidden.unwrap_or(true);
         let result = if enabled {
             let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-            let command = scheduled_task_command(&executable);
+            let command = scheduled_task_command(&executable, silent);
             let arguments = ["/Create", "/TN", task_name, "/SC", "ONLOGON", "/RL", "HIGHEST", "/F", "/TR", command.as_str()];
             // Ask for elevation first, then fall back to a normal user task if UAC is declined.
             if run_scheduled_task(&arguments, true).unwrap_or(false) {
@@ -221,6 +230,7 @@ fn desktop_set_autostart(enabled: bool) -> Result<bool, String> {
     #[cfg(not(windows))]
     {
         let _ = enabled;
+        let _ = hidden;
         Err("autostart is currently implemented for Windows only".to_string())
     }
 }

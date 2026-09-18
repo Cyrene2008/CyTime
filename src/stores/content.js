@@ -74,6 +74,14 @@ export const useContentStore = defineStore('content', () => {
     delete content.quoteMetadata[quote]
     persist()
   }
+  function removeQuotes(values) {
+    const removing = new Set(values)
+    const remaining = content.quotes.filter(item => !removing.has(item))
+    if (!remaining.length) return
+    content.quotes = remaining
+    removing.forEach(value => delete content.quoteMetadata[value])
+    persist()
+  }
   function addLesson(lesson) {
     content.schedule.push({ id: id('lesson'), ...lesson })
     persist()
@@ -88,12 +96,12 @@ export const useContentStore = defineStore('content', () => {
   }
   function addHomework(item) {
     if (!item.content?.trim()) return
-    content.homework.push({ id: id('homework'), subject: item.subject || '其他', content: item.content.trim(), dueAt: item.dueAt || '', completed: false, createdAt: Date.now() })
+    content.homework.push({ id: id('homework'), subject: item.subject || '其他', content: item.content.trim(), startAt: item.startAt || '', dueAt: item.dueAt || '', completed: false, createdAt: Date.now() })
     persist()
   }
   function updateHomework(item, patch) {
     if (!patch.content?.trim()) return
-    Object.assign(item, { subject: patch.subject || '其他', content: patch.content.trim() })
+    Object.assign(item, { subject: patch.subject || '其他', content: patch.content.trim(), startAt: patch.startAt ?? item.startAt ?? '', dueAt: patch.dueAt ?? item.dueAt ?? '' })
     persist()
   }
   function removeHomework(item) {
@@ -102,5 +110,5 @@ export const useContentStore = defineStore('content', () => {
   }
 
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework }
+  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework }
 })
