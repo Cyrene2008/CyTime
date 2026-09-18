@@ -12,7 +12,7 @@
         "lunar-javascript": "^1.7.7",
         "pinia": "^3.0.3",
         "vue": "^3.5.17",
-        "vue-fluent-widgets": "^1.0.2",
+        "vue-fluent-widgets": "^1.0.3",
         "vue-router": "^4.5.1",
       },
       "devDependencies": {
@@ -822,7 +822,7 @@
 
     "vue": ["vue@3.5.42", "https://registry.npmmirror.com/vue/-/vue-3.5.42.tgz", { "dependencies": { "@vue/compiler-dom": "3.5.42", "@vue/compiler-sfc": "3.5.42", "@vue/runtime-dom": "3.5.42", "@vue/server-renderer": "3.5.42", "@vue/shared": "3.5.42" }, "peerDependencies": { "typescript": "*" }, "optionalPeers": ["typescript"] }, "sha512-4RyHQTbQvOPs3MfvUO1Sg0YRrKNnA0mAVtvpd12Tg1fKDN7OHBUl1IqSn8zGJjK9nI3NkNp8cgTpVrSZC5TTcA=="],
 
-    "vue-fluent-widgets": ["vue-fluent-widgets@1.0.2", "https://registry.npmmirror.com/vue-fluent-widgets/-/vue-fluent-widgets-1.0.2.tgz", { "dependencies": { "@iconify/vue": "^4.3.0" }, "peerDependencies": { "@iconify-json/fluent": "^1.2.10", "vue": "^3.5.0", "vue-router": "^4.0.0" }, "optionalPeers": ["@iconify-json/fluent"] }, "sha512-/QX0p8rsRzE4hZ0IwYROhvWoax7QM+2k1IshXP6Ad67+tvjJjvnQDV5SsZ13HPD0mxZGrhGDL92YC3NqDadHaw=="],
+    "vue-fluent-widgets": ["vue-fluent-widgets@1.0.3", "https://registry.npmmirror.com/vue-fluent-widgets/-/vue-fluent-widgets-1.0.3.tgz", { "dependencies": { "@iconify/vue": "^4.3.0" }, "peerDependencies": { "@iconify-json/fluent": "^1.2.10", "vue": "^3.5.0", "vue-router": "^4.0.0" }, "optionalPeers": ["@iconify-json/fluent"] }, "sha512-0ZSAqtCyJwRZ6/Pwax5nwJZqzRYBcGbIeG2jjIaAbacHJ3urTadnLd+YOFhCLayZoAqe0qkrxmjuaoSsl4zB9g=="],
 
     "vue-router": ["vue-router@4.6.4", "https://registry.npmmirror.com/vue-router/-/vue-router-4.6.4.tgz", { "dependencies": { "@vue/devtools-api": "^6.6.4" }, "peerDependencies": { "vue": "^3.5.0" } }, "sha512-Hz9q5sa33Yhduglwz6g9skT8OBPii+4bFn88w6J+J4MfEo4KRRpmiNG/hHHkdbRFlLBOqxN8y8gf2Fb0MTUgVg=="],
 
