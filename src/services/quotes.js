@@ -1,5 +1,29 @@
 import { fetchJson } from './desktop'
 
+export const quoteApiEndpoints = [
+  { id: 'cf', label: 'Cloudflare（time.cyrene.hk）', base: 'https://time.cyrene.hk/api/v1/quote' },
+  { id: 'server', label: '自建服务器（quote.cyrene.hk）', base: 'https://quote.cyrene.hk/api/v1/quote' }
+]
+
+export function quoteApiOrder(preferred = 'cf') {
+  return preferred === 'server' ? ['server', 'cf'] : ['cf', 'server']
+}
+
+async function fetchQuoteApi(path, signal, preferred = 'cf') {
+  let lastError
+  for (const id of quoteApiOrder(preferred)) {
+    const endpoint = quoteApiEndpoints.find(item => item.id === id)
+    if (!endpoint) continue
+    try {
+      return await fetchJson(`${endpoint.base}${path}`, signal)
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error
+      lastError = error
+    }
+  }
+  throw lastError || new Error('Quote API unavailable')
+}
+
 export const quoteSourceOptions = {
   cytime: { label: 'CyQuote 昔言', language: '中文', description: '由Cyrene2008维护并提供的内容安全的语录库♪', url: 'https://time.cyrene.hk/api/v1/quote?format=json' },
   hitokoto: { label: '一言', language: '中文', description: '综合短句与名人语录', url: 'https://v1.hitokoto.cn/?encode=json' },
@@ -12,10 +36,15 @@ export const quoteSourceOptions = {
 
 const BLOCKED_TERMS = ['色情', '赌博', '毒品', '暴力恐怖']
 
-export async function fetchCloudQuote(source = 'hitokoto', signal, categories = []) {
+export async function fetchCloudQuote(source = 'hitokoto', signal, categories = [], preferred = 'cf') {
   const sourceConfig = quoteSourceOptions[source] || quoteSourceOptions.hitokoto
-  const url = source === 'cytime' && categories.length ? `${sourceConfig.url}&category=${encodeURIComponent(categories.join(','))}` : sourceConfig.url
-  const data = await fetchJson(url, signal)
+  let data
+  if (source === 'cytime') {
+    const suffix = categories.length ? `?format=json&category=${encodeURIComponent(categories.join(','))}` : '?format=json'
+    data = await fetchQuoteApi(suffix, signal, preferred)
+  } else {
+    data = await fetchJson(sourceConfig.url, signal)
+  }
   const payload = data?.data && typeof data.data === 'object' ? data.data : data
   const quote = String(payload.hitokoto || payload.content || payload.quote || payload.text || payload.value || payload.advice || payload.slip?.advice || payload.poem || '').trim()
   if (!quote) throw new Error('Empty quote response')
@@ -29,13 +58,13 @@ export async function fetchCloudQuote(source = 'hitokoto', signal, categories = 
   }
 }
 
-export async function fetchQuoteCategories(signal) {
-  const response = await fetchJson('https://time.cyrene.hk/api/v1/quote/categories', signal)
+export async function fetchQuoteCategories(signal, preferred = 'cf') {
+  const response = await fetchQuoteApi('/categories', signal, preferred)
   return Array.isArray(response?.categories) ? response.categories.map(String).filter(Boolean) : []
 }
 
-export async function fetchQuoteStats(signal) {
-  const response = await fetchJson('https://time.cyrene.hk/api/v1/quote/count', signal)
+export async function fetchQuoteStats(signal, preferred = 'cf') {
+  const response = await fetchQuoteApi('/count', signal, preferred)
   const total = Number(response?.total)
   return {
     total: Number.isFinite(total) ? total : 0,

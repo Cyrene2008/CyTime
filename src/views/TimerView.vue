@@ -26,6 +26,10 @@ function startTimer() {
   label.value = ''
   settingsOpen.value = false
 }
+function guardSubmitClick(event) {
+  const button = event.target?.closest?.('button')
+  if (button && button.type === 'submit' && !button.closest('.dialog-actions')) event.preventDefault()
+}
 function removeTask() { if (task.value) timeStore.removeTimer(task.value) }
 </script>
 
@@ -41,7 +45,7 @@ function removeTask() { if (task.value) timeStore.removeTimer(task.value) }
       <button v-if="task" type="button" class="focus-control" @click="removeTask"><FluentIcon icon="arrow-reset-20-regular" :width="17" /> 重置</button>
     </div>
     <div v-if="settingsOpen" class="focus-dialog-layer" @click.self="settingsOpen = false">
-       <form class="focus-dialog timer-dialog surface-panel" @submit.prevent="startTimer">
+       <form class="focus-dialog timer-dialog surface-panel" @submit.prevent="startTimer" @click="guardSubmitClick">
         <div class="dialog-heading"><div><span class="eyebrow">TIMER</span><h2>设置计时器</h2></div><button type="button" class="dialog-close" @click="settingsOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></div>
         <label class="dialog-label">任务名称 <span>可选</span><input v-model="label" placeholder="例如：英语阅读" /></label>
          <label class="dialog-label">计时模式<FluentSelect v-model="mode" :options="modeOptions" /></label>

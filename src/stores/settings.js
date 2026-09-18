@@ -34,6 +34,7 @@ export const defaultSettings = {
   quoteCloudWeight: 1,
   quoteCloudSource: 'hitokoto',
   quoteApiCategories: [],
+  quoteApiEndpoint: 'cf',
   quoteApiCategoryWeightsEnabled: false,
   quoteApiCategoryWeights: {},
   quoteLocalSources: {
