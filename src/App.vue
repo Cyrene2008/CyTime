@@ -481,6 +481,7 @@ onMounted(async () => {
     observeSafeAreas()
   })
   nextTick(observeSafeAreas)
+  if (document.fonts?.ready) document.fonts.ready.then(() => updateViewPadding()).catch(() => {})
   stopViewPaddingWatch = watch([() => Math.floor(timeStore.now / 1000), () => route.path], async () => {
     await nextTick()
     updateViewPadding()
