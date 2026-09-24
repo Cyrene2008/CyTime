@@ -16,7 +16,8 @@ const defaultContent = {
   flameJourneyQuotes: [...flameJourneyQuotes],
   universityMottos: [...universityMottos],
   schedule: [],
-  homework: []
+  homework: [],
+  homeworkHistory: []
 }
 
 function readContent() {
@@ -30,7 +31,8 @@ function readContent() {
       flameJourneyQuotes: Array.isArray(saved.flameJourneyQuotes) && saved.flameJourneyQuotes.length ? saved.flameJourneyQuotes : [...defaultContent.flameJourneyQuotes],
       universityMottos,
       schedule: Array.isArray(saved.schedule) ? saved.schedule : [],
-      homework: Array.isArray(saved.homework) ? saved.homework : []
+      homework: Array.isArray(saved.homework) ? saved.homework : [],
+      homeworkHistory: Array.isArray(saved.homeworkHistory) ? saved.homeworkHistory : []
     }
   } catch {
     return structuredClone(defaultContent)
@@ -104,11 +106,43 @@ export const useContentStore = defineStore('content', () => {
     Object.assign(item, { subject: patch.subject || '其他', content: patch.content.trim(), startAt: patch.startAt ?? item.startAt ?? '', dueAt: patch.dueAt ?? item.dueAt ?? '' })
     persist()
   }
-  function removeHomework(item) {
+  function removeHomework(item, { toHistory = false, reason = 'manual' } = {}) {
+    if (toHistory) addToHistory(item, reason)
     content.homework = content.homework.filter(entry => entry.id !== item.id)
     persist()
   }
+  function addToHistory(item, reason = 'auto') {
+    content.homeworkHistory.push({
+      id: id('hw-hist'), subject: item.subject, content: item.content,
+      startAt: item.startAt || '', dueAt: item.dueAt || '',
+      completed: item.completed, createdAt: item.createdAt,
+      removedAt: Date.now(), reason
+    })
+    persist()
+  }
+  function stampMs(value) {
+    const [date = '', time = '00:00'] = String(value || '').split('T')
+    const [y, mo, d] = date.split('-').map(Number)
+    const [h = 0, mi = 0] = time.split(':').map(Number)
+    if (!y || !mo || !d) return NaN
+    return new Date(y, mo - 1, d, h, mi).getTime()
+  }
+  function archivePastHomework() {
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const past = content.homework.filter(item => {
+      if (!item.dueAt) return false
+      const ms = stampMs(item.dueAt)
+      return Number.isFinite(ms) && ms < todayStart.getTime()
+    })
+    if (!past.length) return
+    past.forEach(item => addToHistory(item, 'auto'))
+    const ids = new Set(past.map(e => e.id))
+    content.homework = content.homework.filter(item => !ids.has(item.id))
+    persist()
+  }
+  function clearHomeworkHistory() { content.homeworkHistory = []; persist() }
 
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework }
+  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory }
 })
