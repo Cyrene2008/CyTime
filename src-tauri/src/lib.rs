@@ -9,12 +9,44 @@ use std::sync::{Arc, Mutex};
 use std::fs;
 use std::path::PathBuf;
 use serde_json::Value;
-use tauri::{include_image, AppHandle, Emitter, LogicalSize, Manager, Size, WindowEvent};
+use tauri::{include_image, AppHandle, Emitter, LogicalSize, Manager, Size, WindowEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri_plugin_deep_link::DeepLinkExt;
 
 struct PendingUris(Arc<Mutex<Vec<String>>>);
+
+fn is_homework_manage_uri(uri: &str) -> bool {
+    let lower = uri.to_ascii_lowercase();
+    lower.starts_with("cytime://homework/manage") || lower.starts_with("cytime://homework/?") || lower.contains("cytime://homework/manage")
+}
+
+/// Independent floating homework manager window (works with or without main visible).
+fn open_homework_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("homework") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        app.emit("cytime:homework-manage", "reveal").ok();
+        return;
+    }
+    let url = WebviewUrl::App("/homework-manage".into());
+    let result = WebviewWindowBuilder::new(app, "homework", url)
+        .title("CyTime 作业管理")
+        .inner_size(440.0, 640.0)
+        .min_inner_size(360.0, 420.0)
+        .resizable(true)
+        .decorations(true)
+        .shadow(true)
+        .center()
+        .always_on_top(true)
+        .focused(true)
+        .build();
+    if let Err(error) = result {
+        eprintln!("failed to open homework window: {error}");
+    }
+}
+
 
 fn storage_path(app: &AppHandle) -> Result<PathBuf, String> {
     let executable_dir = std::env::current_exe().ok().and_then(|path| path.parent().map(PathBuf::from)).map(|path| path.join("data").join("cytime-data.json"));
@@ -114,10 +146,32 @@ async fn desktop_download_update(url: String) -> Result<(), String> {
             || host.ends_with(".昔涟.cn")
     );
     if !allowed {
-        return Err("update URL is not allowed".to_string());
+        return Err("更新地址不受支持".to_string());
     }
-    let bytes = reqwest::Client::builder().timeout(Duration::from_secs(120)).build().map_err(|error| error.to_string())?.get(parsed).send().await.map_err(|error| error.to_string())?.error_for_status().map_err(|error| error.to_string())?.bytes().await.map_err(|error| error.to_string())?;
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(180))
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .map_err(|error| error.to_string())?
+        .get(parsed)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?
+        .error_for_status()
+        .map_err(|error| format!("下载安装包失败：HTTP {status}", status = error.status().map(|value| value.as_u16()).unwrap_or(0)))?;
+    let content_type = response.headers().get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if content_type.contains("text/html") {
+        return Err("下载到的是网页而不是安装包，请打开 Release 页面手动下载".to_string());
+    }
+    let bytes = response.bytes().await.map_err(|error| error.to_string())?;
+    if bytes.len() < 64 || bytes[0] != b'M' || bytes[1] != b'Z' {
+        return Err("下载文件无效，不是可执行的 Windows 安装包".to_string());
+    }
     let path = std::env::temp_dir().join("CyTime-update.exe");
+    let _ = fs::remove_file(&path);
     fs::write(&path, bytes).map_err(|error| error.to_string())?;
     Command::new(&path).spawn().map_err(|error| error.to_string())?;
     Ok(())
@@ -292,6 +346,10 @@ async fn desktop_fetch_network_time() -> Result<i64, String> {
 
 #[tauri::command]
 fn desktop_window_action(app: AppHandle, action: String) -> Result<(), String> {
+    if action == "close-homework" {
+        if let Some(homework) = app.get_webview_window("homework") { let _ = homework.close(); }
+        return Ok(());
+    }
     let window = app.get_webview_window("main").ok_or_else(|| "main window unavailable".to_string())?;
     match action.as_str() {
         "minimize" => window.minimize(),
@@ -300,6 +358,12 @@ fn desktop_window_action(app: AppHandle, action: String) -> Result<(), String> {
         "show" => window.show(),
         _ => return Err("unknown window action".to_string()),
     }.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_open_homework(app: AppHandle) -> Result<(), String> {
+    open_homework_window(&app);
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -339,7 +403,10 @@ pub fn run() {
     tauri::Builder::default()
         .manage(PendingUris(pending_uris.clone()))
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
+            let has_homework = argv.iter().any(|argument| is_homework_manage_uri(argument));
+            if has_homework {
+                open_homework_window(app);
+            } else if let Some(window) = app.get_webview_window("main") {
                 window.show().ok();
                 window.unminimize().ok();
                 window.set_focus().ok();
@@ -352,7 +419,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![application_platform, desktop_startup_args, desktop_pending_uris, storage_read_all, storage_write, desktop_write_file, desktop_check_update, desktop_download_update, desktop_set_uri_registration, desktop_window_mode, desktop_set_autostart, desktop_fetch_json, desktop_fetch_network_time, desktop_window_action])
+        .invoke_handler(tauri::generate_handler![application_platform, desktop_startup_args, desktop_pending_uris, storage_read_all, storage_write, desktop_write_file, desktop_check_update, desktop_download_update, desktop_set_uri_registration, desktop_window_mode, desktop_set_autostart, desktop_fetch_json, desktop_fetch_network_time, desktop_window_action, desktop_open_homework])
         .setup(move |app| {
             if let Some(listener) = activation_listener {
                 let activation_app = app.handle().clone();
@@ -365,10 +432,18 @@ pub fn run() {
                         } else {
                             let arguments = payload.lines().filter(|argument| argument.starts_with("cytime://")).map(String::from).collect::<Vec<_>>();
                             if let Ok(mut pending) = pending_uris.lock() { pending.extend(arguments.iter().cloned()); }
+                            if arguments.iter().any(|argument| is_homework_manage_uri(argument)) {
+                                open_homework_window(&activation_app);
+                            }
                             for argument in arguments { activation_app.emit("cytime:open-url", argument).ok(); }
                         }
                     }
                 });
+            }
+            // Cold start with cytime://homework/manage on argv
+            let startup_uris: Vec<String> = std::env::args().filter(|argument| argument.starts_with("cytime://")).collect();
+            if startup_uris.iter().any(|argument| is_homework_manage_uri(argument)) {
+                open_homework_window(app.handle());
             }
             if let Some(window) = app.get_webview_window("main") {
                 window.set_title("CyTime 昔时时钟").ok();

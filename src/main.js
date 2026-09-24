@@ -11,6 +11,7 @@ import ClockView from './views/ClockView.vue'
 import CountdownView from './views/CountdownView.vue'
 import TimerView from './views/TimerView.vue'
 import SettingsView from './views/SettingsView.vue'
+import HomeworkManageView from './views/HomeworkManageView.vue'
 import './styles/app.css'
 
 const isTauriRuntime = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__ || window.location?.hostname === 'tauri.localhost' || window.location?.protocol === 'tauri:')
@@ -82,6 +83,7 @@ async function bootstrap() {
   const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
     routes: [
+      { path: '/homework-manage', component: HomeworkManageView },
       { path: '/', redirect: startupPath },
       { path: '/clock', component: ClockView },
       { path: '/countdown', component: CountdownView },

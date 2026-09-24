@@ -81,6 +81,16 @@ export function desktopWindowAction(action) {
   return isDesktop() ? invoke('desktop_window_action', { action }) : Promise.resolve(false)
 }
 
+/** 打开独立悬浮作业管理窗（Tauri 多窗口） */
+export function openHomeworkManageWindow() {
+  return isDesktop() ? invoke('desktop_open_homework') : Promise.resolve(false)
+}
+
+/** 关闭独立作业管理窗 */
+export function closeHomeworkManageWindow() {
+  return isDesktop() ? invoke('desktop_window_action', { action: 'close-homework' }) : Promise.resolve(false)
+}
+
 export async function getDesktopStartupArgs() {
   return isDesktop() ? invoke('desktop_startup_args') : []
 }
@@ -130,6 +140,14 @@ export async function checkDesktopUpdate() {
   throw new Error('无法访问更新源')
 }
 
-export function downloadDesktopUpdate(url) {
-  return isDesktop() ? invoke('desktop_download_update', { url }) : window.open(url, '_blank', 'noopener,noreferrer')
+export async function downloadDesktopUpdate(url) {
+  if (!isDesktop()) {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    return
+  }
+  try {
+    await invoke('desktop_download_update', { url })
+  } catch (error) {
+    throw new Error(typeof error === 'string' ? error : (error?.message || '下载安装包失败'))
+  }
 }

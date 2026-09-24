@@ -238,6 +238,31 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .focus-view { padding-top: clamp(56px, 10vh, 120px); }
 
 /* URI floating homework manager: fixed card + 10s idle dismiss. */
+.homework-window-page {
+  position: relative;
+  width: 100vw;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  box-sizing: border-box;
+  background:
+    radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--accent), transparent 92%), transparent 55%),
+    var(--bg-base);
+}
+.homework-window-page .homework-panel.homework-float {
+  position: relative;
+  width: min(400px, 100%);
+  max-height: calc(100vh - 40px);
+}
+.homework-window-root .status-dock,
+.homework-window-root .mode-nav,
+.homework-window-root .clock-footer,
+.homework-window-root .app-meta,
+.homework-window-root .task-docks,
+.homework-window-root .app-titlebar {
+  display: none !important;
+}
 .homework-float-layer {
   position: fixed;
   inset: 0;
