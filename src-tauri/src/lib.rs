@@ -143,8 +143,13 @@ fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Re
             window.unmaximize().map_err(|error| error.to_string())?;
             window.set_size(Size::Logical(LogicalSize::new(960.0, 720.0))).map_err(|error| error.to_string())?;
             window.center().ok();
+            // Mini stays above other windows but must not steal keyboard focus (touch desks).
+            let _ = window.set_always_on_top(true);
+            let _ = window.set_focusable(false);
         }
         "normal" => {
+            let _ = window.set_always_on_top(false);
+            let _ = window.set_focusable(true);
             window.set_resizable(true).map_err(|error| error.to_string())?;
             window.set_min_size(Some(Size::Logical(LogicalSize::new(1280.0, 720.0)))).map_err(|error| error.to_string())?;
             window.set_max_size(None::<Size>).map_err(|error| error.to_string())?;
@@ -154,6 +159,8 @@ fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Re
             window.center().ok();
         }
         "max" => {
+            let _ = window.set_always_on_top(false);
+            let _ = window.set_focusable(true);
             window.set_resizable(true).map_err(|error| error.to_string())?;
             window.set_min_size(Some(Size::Logical(LogicalSize::new(1280.0, 720.0)))).map_err(|error| error.to_string())?;
             window.set_max_size(None::<Size>).map_err(|error| error.to_string())?;
@@ -161,6 +168,8 @@ fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Re
             window.maximize().map_err(|error| error.to_string())?;
         }
         "full" => {
+            let _ = window.set_always_on_top(false);
+            let _ = window.set_focusable(true);
             window.set_resizable(true).map_err(|error| error.to_string())?;
             window.set_min_size(Some(Size::Logical(LogicalSize::new(1280.0, 720.0)))).map_err(|error| error.to_string())?;
             window.set_max_size(None::<Size>).map_err(|error| error.to_string())?;
@@ -173,7 +182,10 @@ fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Re
     if reveal.unwrap_or(true) {
         window.show().map_err(|error| error.to_string())?;
         let _ = window.unminimize();
-        window.set_focus().map_err(|error| error.to_string())?;
+        // Mini: show without activating / taking focus.
+        if mode != "mini" {
+            window.set_focus().map_err(|error| error.to_string())?;
+        }
     }
     Ok(())
 }
