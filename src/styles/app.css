@@ -174,13 +174,13 @@ html[data-font="wengfaluosi"] .focus-clock { font-weight: 400; }
 .micro-button.icon-only { display: grid; place-items: center; width: 27px; padding: 0; }
 .homework-time-badge { color: var(--homework-time-color, var(--text-muted)); font-size: var(--homework-time-font-size, .7em); margin-left: 4px; }
 .homework-hint { color: var(--text-muted); font-size: 10px; margin: 0; }
-.homework-pager { order: 3; position: relative; display: flex; align-items: center; justify-content: center; min-height: 30px; padding: 5px 12px; overflow: hidden; border-radius: 999px; color: var(--text-secondary); background: color-mix(in srgb, var(--accent), transparent 82%); font-size: calc(var(--homework-font-size, 14px) * .72); }
-.homework-pager-track { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; }
-.homework-pager-track i { display: block; width: 100%; height: 100%; border-radius: inherit; background: color-mix(in srgb, var(--accent), transparent 18%); transform: scaleX(0); transform-origin: left center; animation-name: homework-page-progress; animation-timing-function: linear; animation-fill-mode: forwards; }
-.homework-pager-controls { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 10px; }
-.homework-pager .micro-button { min-height: 22px; padding: 0 6px; color: var(--text-secondary); }
-.homework-pager .micro-button:hover { color: var(--accent); background: color-mix(in srgb, var(--accent), transparent 88%); }
-@keyframes homework-page-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.homework-pager { order: 3; position: relative; display: flex; align-items: center; justify-content: center; min-height: 24px; padding: 3px 10px 7px; overflow: hidden; border-radius: 6px; color: var(--text-muted); background: transparent; font-size: calc(var(--homework-font-size, 14px) * .7); }
+.homework-pager-track { position: absolute; right: 12px; bottom: 0; left: 12px; height: 2px; overflow: hidden; border-radius: 1px; background: transparent; pointer-events: none; }
+.homework-pager-track i { display: block; width: 0; height: 100%; border-radius: 1px; background: color-mix(in srgb, var(--accent), transparent 55%); animation-name: homework-page-progress; animation-timing-function: linear; animation-fill-mode: forwards; }
+.homework-pager-controls { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--text-secondary); }
+.homework-pager .micro-button { min-height: 20px; padding: 0 6px; color: var(--text-muted); }
+.homework-pager .micro-button:hover { color: var(--accent); background: color-mix(in srgb, var(--accent), transparent 90%); }
+@keyframes homework-page-progress { from { width: 0; } to { width: 100%; } }
 .homework-footer { order: 4; display: flex; }
 .homework-add-button { flex: 1; min-height: 32px; border: 1px solid var(--border-strong); border-radius: 6px; color: var(--accent); background: transparent; cursor: pointer; font-size: 12px; }
 .homework-add-button:hover { background: var(--bg-hover); }
@@ -314,11 +314,12 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
   z-index: 2;
   left: 10px;
   top: 0;
-  width: 3px;
-  height: 20px;
+  width: 2.5px;
+  height: 16px;
   border-radius: 999px;
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent), transparent 12%);
   pointer-events: none;
+  opacity: .9;
 }
 .settings-group-button,
 .settings-nav-item,
