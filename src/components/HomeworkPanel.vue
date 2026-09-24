@@ -71,7 +71,7 @@ function getItemStatus(item) {
   const ts = now.value
   const hasStart = !!item.startAt
   const hasDue = !!item.dueAt
-  if (!hasStart && !hasDue) return 'ongoing'
+  if (!hasStart && !hasDue) return null
   if (hasStart) {
     const startMs = stampToMs(item.startAt)
     if (Number.isFinite(startMs) && ts < startMs) return 'upcoming'
@@ -89,7 +89,7 @@ function timeValue(value, fallback = Number.MAX_SAFE_INTEGER) {
 }
 
 const ongoingItems = computed(() => items.value
-  .filter(i => getItemStatus(i) === 'ongoing')
+  .filter(i => !getItemStatus(i) || getItemStatus(i) === 'ongoing')
   .sort((a, b) => timeValue(a.startAt) - timeValue(b.startAt) || timeValue(a.dueAt) - timeValue(b.dueAt)))
 const upcomingItems = computed(() => items.value
   .filter(i => getItemStatus(i) === 'upcoming')
@@ -148,36 +148,48 @@ function setPage(next) {
 function measurePageSize() {
   const panel = panelRef.value
   const list = listRef.value
-  if (!panel || !list || !panel.offsetHeight || window.innerWidth <= 620) return
-  if (pageAnimating) return
-  const vh = window.innerHeight
+  if (!panel || !list || !panel.offsetHeight || pageAnimating) return
+  if (window.innerWidth <= 620) {
+    pageSize.value = 4
+    return
+  }
+  const shell = panel.closest('.app-shell')
+  const shellH = (shell && shell.clientHeight) || window.innerHeight
   let safeTop = 80
   let safeBottom = 76
   const dock = document.querySelector('.status-dock')
-  if (dock) {
-    const rect = dock.getBoundingClientRect()
-    if (rect.height > 0 && rect.top < vh) safeTop = Math.max(80, Math.round(rect.bottom + 12))
+  if (dock && dock.offsetParent !== null && dock.offsetHeight > 0) {
+    safeTop = Math.max(80, Math.round(dock.offsetTop + dock.offsetHeight + 12))
   }
   const settingsButton = document.querySelector('.footer-settings')
-  if (settingsButton) {
-    const rect = settingsButton.getBoundingClientRect()
-    if (rect.height > 0 && rect.top > 0 && rect.top < vh) safeBottom = Math.max(76, Math.round(vh - rect.top + 12))
+  if (settingsButton && settingsButton.offsetParent !== null) {
+    const footer = settingsButton.closest('.clock-footer') || settingsButton
+    let footerTop = 0
+    let node = footer
+    while (node && node !== shell && node !== document.body) {
+      footerTop += node.offsetTop
+      node = node.offsetParent
+    }
+    if (footerTop > 0 && footerTop < shellH) safeBottom = Math.max(76, Math.round(shellH - footerTop + 12))
   }
   panel.style.setProperty('--homework-safe-top', `${safeTop}px`)
   panel.style.setProperty('--homework-safe-bottom', `${safeBottom}px`)
-  const available = Math.max(120, vh - safeTop - safeBottom)
-  const chrome = Math.max(0, panel.offsetHeight - list.offsetHeight)
-  const listAvailable = Math.max(40, available - chrome)
+  const available = Math.max(140, shellH - safeTop - safeBottom)
+  let chrome = 28 + 22
+  const header = panel.querySelector('.homework-header')
+  const footerEl = panel.querySelector('.homework-footer')
+  const pagerEl = panel.querySelector('.homework-pager')
+  if (header) chrome += header.offsetHeight
+  if (footerEl) chrome += footerEl.offsetHeight
+  if (pagerEl && pageCount.value > 1) chrome += pagerEl.offsetHeight
+  const listAvailable = Math.max(50, available - chrome)
   const children = [...list.children].filter(el => el.classList?.contains('homework-item'))
   if (!children.length) return
   const gap = 4
-  let sum = 0
-  children.forEach(el => { sum += el.offsetHeight })
-  const slot = (sum + gap * (children.length - 1)) / children.length + gap
-  const capacityF = Math.max(1, Math.min(20, (listAvailable + gap) / slot))
-  const target = Math.max(1, Math.floor(capacityF))
-  if (target > pageSize.value) pageSize.value = target
-  else if (capacityF + 0.3 < pageSize.value) pageSize.value = target
+  const maxH = Math.max(...children.map(el => el.offsetHeight))
+  const slot = maxH + gap
+  const capacity = Math.max(1, Math.min(20, Math.floor((listAvailable + gap) / slot)))
+  if (capacity !== pageSize.value) pageSize.value = capacity
 }
 
 let measureHandle = 0
@@ -291,7 +303,8 @@ onUnmounted(() => {
 })
 
 watch(visibleItems, scheduleMeasure, { flush: 'post' })
-watch(() => [settingsStore.settings.homeworkWidth, settingsStore.settings.homeworkFontSize, settingsStore.settings.statusDockScale, settingsStore.settings.statusDockOffsetY, settingsStore.settings.homeworkPosition], scheduleMeasure, { flush: 'post' })
+watch(() => sortedItems.value.length, scheduleMeasure, { flush: 'post' })
+watch(() => [settingsStore.settings.homeworkWidth, settingsStore.settings.homeworkFontSize, settingsStore.settings.statusDockScale, settingsStore.settings.statusDockOffsetY, settingsStore.settings.homeworkPosition, settingsStore.settings.uiScale], scheduleMeasure, { flush: 'post' })
 
 watch(() => settingsStore.settings.homeworkPageInterval, () => {
   startRotateTimer()
@@ -314,7 +327,7 @@ watch(() => settingsStore.settings.homeworkPageInterval, () => {
         <span>
           <span class="homework-item-title">
             <strong>{{ item.subject }}</strong>
-            <span class="homework-badge" :class="`badge-${getItemStatus(item)}`">
+            <span v-if="getItemStatus(item)" class="homework-badge" :class="`badge-${getItemStatus(item)}`">
               {{ getItemStatus(item) === 'ongoing' ? '进行中' : getItemStatus(item) === 'upcoming' ? '即将进行' : '已结束' }}
             </span>
             <small v-if="formatTimeRange(item.startAt, item.dueAt)" class="homework-time-badge">{{ formatTimeRange(item.startAt, item.dueAt) }}</small>
@@ -336,7 +349,7 @@ watch(() => settingsStore.settings.homeworkPageInterval, () => {
     </div>
     <div class="homework-footer"><button type="button" class="homework-add-button" @click="openEditor()">布置作业</button></div>
 
-    <Teleport to="body">
+    <Teleport to=".app-shell">
       <div v-if="editorOpen" class="focus-dialog-layer" @click.self="closeEditor">
         <form class="focus-dialog homework-dialog surface-panel" @submit.prevent="saveHomework" @click="guardSubmitClick">
           <div class="dialog-heading"><div><span class="eyebrow">HOMEWORK</span><h2>{{ editingId ? '编辑作业' : '布置作业' }}</h2></div><button type="button" class="dialog-close" aria-label="关闭作业编辑" @click="closeEditor"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></div>
@@ -345,8 +358,8 @@ watch(() => settingsStore.settings.homeworkPageInterval, () => {
             <label v-if="subjectChoice === CUSTOM_SUBJECT" class="dialog-label">自定义科目<input v-model="customSubject" placeholder="例如：信息技术" /></label>
             <label class="dialog-label">作业内容<textarea v-model="content" rows="4" placeholder="例如：完成练习册第 12 页"></textarea></label>
             <div class="homework-time-grid">
-              <div class="dialog-label">开始时间 <span>可选</span><div class="homework-time-row"><FluentDatePicker v-model="startDate" placeholder="日期" /><FluentTimePicker v-model="startTime" placeholder="时间" /></div></div>
-              <div class="dialog-label">截止时间 <span>可选</span><div class="homework-time-row"><FluentDatePicker v-model="dueDate" placeholder="日期" /><FluentTimePicker v-model="dueTime" placeholder="时间" /></div></div>
+              <div class="dialog-label">开始时间<div class="homework-time-row"><FluentDatePicker v-model="startDate" placeholder="日期" /><FluentTimePicker v-model="startTime" placeholder="时间" /></div></div>
+              <div class="dialog-label">截止时间<div class="homework-time-row"><FluentDatePicker v-model="dueDate" placeholder="日期" /><FluentTimePicker v-model="dueTime" placeholder="时间" /></div></div>
             </div>
             <p class="homework-hint">未填写日期时自动按今日计算；填写了日期则需同时填写开始和截止日期。</p>
             <p v-if="formError" class="field-error">{{ formError }}</p>
@@ -356,7 +369,7 @@ watch(() => settingsStore.settings.homeworkPageInterval, () => {
       </div>
     </Teleport>
 
-    <Teleport to="body">
+    <Teleport to=".app-shell">
       <div v-if="historyOpen" class="focus-dialog-layer" @click.self="historyOpen = false">
         <div class="focus-dialog homework-history-dialog surface-panel">
           <div class="dialog-heading"><div><span class="eyebrow">HISTORY</span><h2>布置历史</h2></div><button type="button" class="dialog-close" aria-label="关闭历史" @click="historyOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></div>

@@ -1,5 +1,5 @@
-﻿<script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+<script setup>
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { searchXiaomiCities, locateWeatherCity } from '../services/weather'
 import { fetchQuoteCategories, fetchQuoteStats, quoteApiEndpoints, readQuoteFile } from '../services/quotes'
 import { getPlatform } from '../services/platform'
@@ -20,6 +20,10 @@ const settingsStore = useSettingsStore()
 const contentStore = useContentStore()
 const weatherStore = useWeatherStore()
 const timeStore = useTimeStore()
+const dockRef = ref(null)
+const navIndicator = ref(null)
+const indicatorGeom = ref(null)
+let navSyncFrame = 0
 const draft = reactive({
   ...settingsStore.settings,
   quoteLocalSources: JSON.parse(JSON.stringify(settingsStore.settings.quoteLocalSources || {})),
@@ -93,8 +97,55 @@ const desktopMode = computed(() => props.desktopAvailable || isDesktop())
 let citySearchTimer
 let citySearchController
 
-function enterGroup(group) { activeGroup.value = group; activePane.value = group.items[0]?.id || activePane.value }
-function selectPane(pane) { activePane.value = pane }
+function enterGroup(group) { activeGroup.value = group; activePane.value = group.items[0]?.id || activePane.value; queueNavSync(true) }
+function selectPane(pane) { activePane.value = pane; queueNavSync(true) }
+function activeNavEl() {
+  return dockRef.value?.querySelector('.settings-group-button.active, .settings-nav-item.active, .settings-nav-project.active')
+}
+function syncNavIndicator(animate = false) {
+  const dock = dockRef.value
+  const indicator = navIndicator.value
+  if (!dock || !indicator) return
+  const target = activeNavEl()
+  if (!target) { indicator.style.opacity = '0'; indicatorGeom.value = null; return }
+  const dockRect = dock.getBoundingClientRect()
+  const rect = target.getBoundingClientRect()
+  const scaleY = dock.offsetHeight ? (dockRect.height / dock.offsetHeight) : 1
+  const top = (rect.top - dockRect.top) / (scaleY || 1) + (rect.height / (scaleY || 1) - 20) / 2
+  const next = { top, height: 20 }
+  const prev = indicatorGeom.value
+  indicator.style.opacity = '1'
+  if (!animate || !prev || typeof indicator.animate !== 'function') {
+    indicator.style.top = `${next.top}px`
+    indicator.style.height = `${next.height}px`
+    indicatorGeom.value = next
+    return
+  }
+  const goingDown = next.top + next.height / 2 >= prev.top + prev.height / 2
+  const stretchTop = goingDown ? prev.top : next.top
+  const stretchBottom = goingDown ? next.top + next.height : prev.top + prev.height
+  const stretchHeight = Math.max(next.height, stretchBottom - stretchTop)
+  indicator.style.top = `${prev.top}px`
+  indicator.style.height = `${prev.height}px`
+  const anim = indicator.animate([
+    { top: `${prev.top}px`, height: `${prev.height}px` },
+    { top: `${stretchTop}px`, height: `${stretchHeight}px`, offset: 0.52 },
+    { top: `${next.top}px`, height: `${next.height}px` }
+  ], { duration: 260, easing: 'cubic-bezier(.1, .9, .2, 1)' })
+  anim.addEventListener('finish', () => {
+    indicator.style.top = `${next.top}px`
+    indicator.style.height = `${next.height}px`
+  }, { once: true })
+  indicatorGeom.value = next
+}
+function queueNavSync(animate = false) {
+  if (navSyncFrame) cancelAnimationFrame(navSyncFrame)
+  navSyncFrame = requestAnimationFrame(async () => {
+    navSyncFrame = 0
+    await nextTick()
+    syncNavIndicator(animate)
+  })
+}
 function save() {
   settingsStore.update({ ...draft })
   saved.value = true
@@ -196,21 +247,32 @@ async function autoLocate() {
 }
 
 watch(() => draft.weatherCityName, () => { if (citySearchOpen.value) scheduleCitySearch() })
-onMounted(async () => { platformLabel.value = String(await getPlatform()).toUpperCase(); weatherStore.refresh(draft.weatherCityNum); refreshQuoteCategories() })
-onBeforeUnmount(() => { window.clearTimeout(citySearchTimer); citySearchController?.abort() })
+watch([activePane, activeGroup], () => queueNavSync(true))
+onMounted(async () => {
+  platformLabel.value = String(await getPlatform()).toUpperCase()
+  weatherStore.refresh(draft.weatherCityNum)
+  refreshQuoteCategories()
+  queueNavSync(false)
+})
+onBeforeUnmount(() => {
+  window.clearTimeout(citySearchTimer)
+  citySearchController?.abort()
+  if (navSyncFrame) cancelAnimationFrame(navSyncFrame)
+})
 </script>
 
 <template>
   <section class="settings-sheet" role="dialog" aria-label="设置">
     <header class="settings-header"><div class="settings-title"><FluentIcon icon="options-24-regular" :width="21" /><h1>设置</h1></div><button type="button" class="settings-close" aria-label="关闭设置" @click="cancel"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></header>
     <div class="settings-workspace">
-      <aside class="settings-dock">
+      <aside ref="dockRef" class="settings-dock">
+        <div ref="navIndicator" class="settings-nav-indicator" aria-hidden="true" style="opacity: 0" />
         <template v-if="!activeGroup">
-          <nav class="settings-nav settings-root-nav" aria-label="设置分类"><button v-for="group in groups" :key="group.id" type="button" class="settings-group-button" @click="enterGroup(group)"><FluentIcon :icon="group.icon" :width="18" /><span><strong>{{ group.label }}</strong><small>{{ group.description }}</small></span><FluentIcon icon="chevron-right-16-regular" :width="14" class="group-chevron" /></button></nav>
-          <button type="button" class="settings-nav-project" :class="{ active: activePane === 'about' }" @click="activePane = 'about'"><FluentIcon icon="info-20-regular" :width="17" /><span>项目信息</span></button>
+          <nav class="settings-nav settings-root-nav" aria-label="设置分类"><button v-for="group in groups" :key="group.id" type="button" class="settings-group-button" :class="{ active: activePane !== 'about' && group.items.some(item => item.id === activePane) }" @click="enterGroup(group)"><FluentIcon :icon="group.icon" :width="18" /><span><strong>{{ group.label }}</strong><small>{{ group.description }}</small></span><FluentIcon icon="chevron-right-16-regular" :width="14" class="group-chevron" /></button></nav>
+          <button type="button" class="settings-nav-project" :class="{ active: activePane === 'about' }" @click="activePane = 'about'; queueNavSync(true)"><FluentIcon icon="info-20-regular" :width="17" /><span>项目信息</span></button>
         </template>
         <template v-else>
-          <button type="button" class="settings-dock-back" @click="activeGroup = null"><FluentIcon icon="arrow-left-20-regular" :width="18" /><span>返回</span></button>
+          <button type="button" class="settings-dock-back" @click="activeGroup = null; queueNavSync(true)"><FluentIcon icon="arrow-left-20-regular" :width="18" /><span>返回</span></button>
           <div class="settings-subnav-heading"><FluentIcon :icon="activeGroup.icon" :width="18" /><div><strong>{{ activeGroup.label }}</strong><small>{{ activeGroup.description }}</small></div></div>
           <nav class="settings-nav settings-subnav" :aria-label="`${activeGroup.label}设置`"><button v-for="item in activeGroup.items" :key="item.id" type="button" class="settings-nav-item" :class="{ active: activePane === item.id }" @click="selectPane(item.id)"><FluentIcon :icon="item.icon" :width="16" /><span>{{ item.label }}</span></button></nav>
         </template>
