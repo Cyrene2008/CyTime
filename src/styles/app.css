@@ -66,6 +66,10 @@ button, input { font: inherit; }
 .hero-clock, .focus-clock, .study-center time { letter-spacing: 0; }
 html[data-font="wengfaluosi"] .hero-clock { font-size: clamp(78px, calc(var(--clock-font-scale, 11) * 19px), 190px); font-weight: 400; transform: scaleX(1.08); }
 .task-widget strong, .clock-event strong, .clock-weather strong, .weather-summary strong, .range-control strong { font-family: var(--font-ui); }
+.homework-panel { overflow: hidden; max-height: calc(100% - var(--homework-safe-top, 80px) - var(--homework-safe-bottom, 76px)); }
+.homework-list { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.homework-form .dialog-label > span { display: none; }
+.focus-dialog { max-height: min(calc(100% - 28px), calc(100vh - 28px)); }
 @media (max-width: 620px) { .task-docks { bottom: 72px; }.task-docks .task-widget { flex-basis: 145px; width: 145px; }.footer-action { min-height: 36px; padding-inline: 9px; }.clock-footer { right: 14px; bottom: 21px; left: 14px; } }
 .exam-mode .clock-footer { opacity: 1; pointer-events: auto; }.footer-settings { position: absolute; left: 0; }.footer-center-actions { position: absolute; left: 50%; display: flex; align-items: center; gap: 5px; transform: translateX(-50%); }.footer-action { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px; border: 0; border-radius: 6px; color: var(--text-muted); background: transparent; cursor: pointer; text-decoration: none; font-size: 12px; }.footer-action:hover { color: var(--accent); background: var(--bg-hover); }.footer-action svg { flex: 0 0 auto; }.task-docks { bottom: 64px; }.task-docks .task-widget { min-height: 48px; }.task-docks.is-marquee { bottom: 64px; }
 .weather-refresh-row { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; color: var(--text-secondary); font-size: 11px; }.weather-summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 13px 0; padding: 11px; border: 1px solid var(--border-subtle); border-radius: 6px; }.weather-summary div { display: grid; gap: 4px; min-width: 0; }.weather-summary small { color: var(--text-muted); font-size: 9px; }.weather-summary strong { overflow: hidden; color: var(--text-primary); font-family: var(--font-num); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }.weather-settings-grid { display: grid; gap: 2px; margin-top: 13px; }.weather-settings-grid .setting-row { min-height: 36px; }.weather-settings-grid .setting-row + .setting-row { margin-top: 0; padding-top: 7px; }.weather-settings-grid input[type="checkbox"] { accent-color: var(--accent); }
@@ -229,3 +233,92 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 
 .clock-view { padding-top: clamp(64px, 12vh, 140px); }
 .focus-view { padding-top: clamp(56px, 10vh, 120px); }
+
+/* Homework panel: stay inside the safe box and paginate instead of overflowing. */
+.homework-panel {
+  height: fit-content;
+  max-height: calc(100% - var(--homework-safe-top, 80px) - var(--homework-safe-bottom, 76px));
+  margin-block: auto;
+  overflow: hidden;
+}
+.homework-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Settings dock: NameRoller-style items + sliding indicator. */
+.settings-dock { position: relative; overflow-x: hidden; overflow-y: auto; }
+.settings-nav-indicator {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.settings-group-button,
+.settings-nav-item,
+.settings-nav-project {
+  position: relative;
+  gap: 10px;
+  border-radius: 8px;
+  transition: background .15s ease, color .15s ease, transform .15s ease;
+}
+.settings-group-button:hover,
+.settings-nav-item:hover,
+.settings-nav-project:hover {
+  color: var(--text-primary);
+  transform: translateX(1px);
+}
+.settings-group-button.active,
+.settings-nav-item.active,
+.settings-nav-project.active {
+  color: var(--accent);
+  transform: translateX(1px);
+}
+.settings-group-button.active svg,
+.settings-nav-item.active svg,
+.settings-nav-project.active svg {
+  transform: scale(1.08);
+}
+.settings-group-button svg,
+.settings-nav-item svg,
+.settings-nav-project svg {
+  transition: transform .25s cubic-bezier(.1, .9, .2, 1);
+  flex-shrink: 0;
+}
+.settings-group-button.active,
+.settings-nav-item.active,
+.settings-nav-project.active {
+  border-left-color: transparent;
+}
+.settings-subnav .settings-nav-item,
+.settings-root-nav .settings-group-button,
+.settings-nav-project {
+  font-size: 13px;
+}
+.settings-sheet .setting-card {
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-card), transparent 8%);
+}
+.settings-sheet .setting-card-heading {
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.settings-sheet .setting-card-heading h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.settings-scroll h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-ui);
+  font-size: 24px;
+  font-weight: 700;
+}
+.settings-kicker + h2 { margin-top: 6px; }
