@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "CyTime desktop capabilities",
-  "windows": ["main"],
-  "permissions": ["core:default", "core:window:default", "core:window:allow-start-dragging", "core:window:allow-minimize", "core:window:allow-close", "core:window:allow-toggle-maximize", "opener:default", "dialog:default", "autostart:default", "deep-link:default"]
+  "windows": ["main", "homework"],
+  "permissions": ["core:default", "core:window:default", "core:window:allow-start-dragging", "core:window:allow-minimize", "core:window:allow-close", "core:window:allow-toggle-maximize", "core:window:allow-set-focus", "opener:default", "dialog:default", "autostart:default", "deep-link:default"]
 }

@@ -11,7 +11,7 @@ import { dayProgress, formatDuration } from './utils/time'
 import { parseCountdownTarget } from './utils/time'
 import { FILING_NAME, FILING_URL } from './config/branding'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { desktopWindowAction, getDesktopStartupArgs, initDesktopBridge, isDesktop, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
+import { desktopWindowAction, getDesktopStartupArgs, initDesktopBridge, isDesktop, openHomeworkManageWindow, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
 import { homeworkManageOpen } from './composables/useHomeworkManage'
 import HomeworkPanel from './components/HomeworkPanel.vue'
 import { fetchNetworkTime } from './services/timeSync'
@@ -217,6 +217,14 @@ function handleDesktopUri(rawUri) {
   if (!settingsStore.settings.uriRegistration) return
   try {
     const uri = new URL(String(rawUri))
+
+    // Homework manage: independent floating window — do not force-show main.
+    if (uri.hostname === 'homework' && (uri.pathname === '/manage' || uri.pathname === 'manage' || uri.pathname === '' || uri.pathname === '/')) {
+      if (isDesktop()) openHomeworkManageWindow()
+      else homeworkManageOpen.value = true
+      return
+    }
+
     const mode = uri.searchParams.get('mode')
     if (mode && ['mini', 'normal', 'max', 'full'].includes(mode)) {
       desktopMini.value = mode === 'mini'
@@ -229,9 +237,7 @@ function handleDesktopUri(rawUri) {
     const page = uri.hostname === 'page' ? uri.pathname.replace(/^\//, '') : ''
     if (page === 'time') router.push('/clock')
     else if (['countdown', 'timer'].includes(page)) router.push(`/${page}`)
-    else if (uri.hostname === 'homework' && (uri.pathname === '/manage' || uri.pathname === 'manage')) {
-      homeworkManageOpen.value = true
-    } else if (uri.hostname === 'countdown') {
+    else if (uri.hostname === 'countdown') {
       const targetInput = uri.searchParams.get('target')
       const length = Number(uri.searchParams.get('length'))
       const targetAt = targetInput ? parseCountdownTarget(targetInput, new Date(timeStore.now)) : length > 0 ? timeStore.now + length * 1000 : null
