@@ -1,6 +1,6 @@
 {
   "name": "cytime",
-  "version": "26.0.3",
+  "version": "26.0.4",
   "private": true,
   "type": "module",
   "description": "CyTime 昔时，面向学习场景的时间管理工具。",

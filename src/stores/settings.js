@@ -6,6 +6,7 @@ const STORAGE_KEY = 'cytime.settings.v2'
 
 export const defaultSettings = {
   theme: 'dark-peach',
+  accentColor: '',
   startupMode: 'clock',
   startupWindowMode: 'normal',
   uriRegistration: true,
@@ -110,6 +111,21 @@ export function applyTheme(settings) {
   root.style.colorScheme = dark ? 'dark' : 'light'
   root.dataset.font = settings.fontFamily
   root.dataset.background = settings.background
+
+  // One accent → full Fluent ramp (same idea as VueFluentWidgets accentColor).
+  const accent = (settings.accentColor || '').trim()
+  if (accent) {
+    root.style.setProperty('--accent', accent)
+    root.style.setProperty('--fluent-accent', accent)
+    root.style.setProperty('--accent-light', `color-mix(in srgb, ${accent}, white 34%)`)
+    root.style.setProperty('--accent-dark', `color-mix(in srgb, ${accent}, black 18%)`)
+    root.style.setProperty('--accent-hover', `color-mix(in srgb, ${accent}, black 12%)`)
+    root.style.setProperty('--accent-200', `color-mix(in srgb, ${accent}, white 72%)`)
+    root.style.setProperty('--accent-50', `color-mix(in srgb, ${accent}, white 92%)`)
+  } else {
+    for (const name of ['--accent', '--fluent-accent', '--accent-light', '--accent-dark', '--accent-hover', '--accent-200', '--accent-50']) root.style.removeProperty(name)
+  }
+
   root.style.setProperty('--clock-font-scale', settings.clockFontScale)
   root.style.setProperty('--date-font-size', `${settings.dateFontSize}px`)
   root.style.setProperty('--quote-font-size', `${settings.quoteFontSize}px`)

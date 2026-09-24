@@ -2,6 +2,12 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useContentStore } from '../stores/content'
 import { useSettingsStore } from '../stores/settings'
+import { chooseAndSaveFile } from '../services/desktop'
+
+const props = defineProps({
+  manageFloat: { type: Boolean, default: false }
+})
+const emit = defineEmits(['close'])
 
 const contentStore = useContentStore()
 const settingsStore = useSettingsStore()
@@ -24,8 +30,31 @@ const dueDate = ref('')
 const dueTime = ref('')
 const formError = ref('')
 const now = ref(Date.now())
+const selectedHistoryIds = ref([])
 let rotateTimer
 let nowTimer
+let floatIdleTimer = 0
+const FLOAT_IDLE_MS = 10000
+
+function clearFloatIdle() {
+  window.clearTimeout(floatIdleTimer)
+  floatIdleTimer = 0
+}
+
+function startFloatIdle() {
+  if (!props.manageFloat || editorOpen.value || historyOpen.value) return
+  clearFloatIdle()
+  floatIdleTimer = window.setTimeout(() => {
+    if (editorOpen.value || historyOpen.value) return
+    emit('close')
+  }, FLOAT_IDLE_MS)
+}
+
+function resetFloatIdle() {
+  if (!props.manageFloat) return
+  if (editorOpen.value || historyOpen.value) return
+  startFloatIdle()
+}
 
 function parseStamp(value) {
   const [date = '', time = ''] = String(value || '').split('T')
@@ -199,6 +228,7 @@ function scheduleMeasure() {
 }
 
 function openEditor(item = null) {
+  clearFloatIdle()
   editingId.value = item?.id || null
   const subject = item?.subject || '数学'
   if (subjectPresets.includes(subject)) {
@@ -219,7 +249,10 @@ function openEditor(item = null) {
   editorOpen.value = true
 }
 
-function closeEditor() { editorOpen.value = false }
+function closeEditor() {
+  editorOpen.value = false
+  if (props.manageFloat) startFloatIdle()
+}
 
 function guardSubmitClick(event) {
   const button = event.target?.closest?.('button')
@@ -284,6 +317,37 @@ function observeSafeArea() {
   if (footer) safeObserver.observe(footer)
 }
 
+async function exportHomework() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    homework: items.value.map(item => ({
+      subject: item.subject,
+      content: item.content,
+      startAt: item.startAt || '',
+      dueAt: item.dueAt || '',
+      completed: Boolean(item.completed),
+      createdAt: item.createdAt
+    }))
+  }
+  try {
+    await chooseAndSaveFile(JSON.stringify(payload, null, 2), `cytime-homework-${new Date().toISOString().slice(0, 10)}.json`)
+  } catch {}
+}
+
+function toggleHistorySelect(id) {
+  if (selectedHistoryIds.value.includes(id)) selectedHistoryIds.value = selectedHistoryIds.value.filter(item => item !== id)
+  else selectedHistoryIds.value = [...selectedHistoryIds.value, id]
+}
+function deleteSelectedHistory() {
+  if (!selectedHistoryIds.value.length) return
+  contentStore.removeHistoryItems(selectedHistoryIds.value)
+  selectedHistoryIds.value = []
+}
+function restoreHistoryItem(item) {
+  contentStore.restoreHomework(item)
+  selectedHistoryIds.value = selectedHistoryIds.value.filter(id => id !== item.id)
+}
+
 onMounted(() => {
   nowTimer = window.setInterval(() => { now.value = Date.now() }, 1000)
   contentStore.archivePastHomework()
@@ -291,12 +355,20 @@ onMounted(() => {
   window.addEventListener('resize', scheduleMeasure)
   observeSafeArea()
   scheduleMeasure()
+  if (props.manageFloat) {
+    resetFloatIdle()
+    window.addEventListener('pointerdown', resetFloatIdle, { capture: true, passive: true })
+    window.addEventListener('keydown', resetFloatIdle, { capture: true })
+  }
 })
 
 onUnmounted(() => {
   window.clearInterval(rotateTimer)
   window.clearInterval(nowTimer)
+  window.clearTimeout(floatIdleTimer)
   window.removeEventListener('resize', scheduleMeasure)
+  window.removeEventListener('pointerdown', resetFloatIdle, { capture: true })
+  window.removeEventListener('keydown', resetFloatIdle, { capture: true })
   if (safeObserver) safeObserver.disconnect()
   if (measureHandle) cancelAnimationFrame(measureHandle)
   measureHandle = 0
@@ -304,6 +376,16 @@ onUnmounted(() => {
 
 watch(visibleItems, scheduleMeasure, { flush: 'post' })
 watch(() => sortedItems.value.length, scheduleMeasure, { flush: 'post' })
+watch([editorOpen, historyOpen], ([editing, hist], previous) => {
+  if (!props.manageFloat) return
+  const wasEditing = Boolean(previous && (previous[0] || previous[1]))
+  if (editing || hist) {
+    // Dialog open: never auto-close (slow typers need full time to finish).
+    clearFloatIdle()
+    return
+  }
+  if (wasEditing) startFloatIdle()
+})
 watch(() => [settingsStore.settings.homeworkWidth, settingsStore.settings.homeworkFontSize, settingsStore.settings.statusDockScale, settingsStore.settings.statusDockOffsetY, settingsStore.settings.homeworkPosition, settingsStore.settings.uiScale], scheduleMeasure, { flush: 'post' })
 
 watch(() => settingsStore.settings.homeworkPageInterval, () => {
@@ -312,14 +394,16 @@ watch(() => settingsStore.settings.homeworkPageInterval, () => {
 </script>
 
 <template>
-  <aside ref="panelRef" class="homework-panel" :class="`homework-${settingsStore.settings.homeworkPosition}`" :style="{ '--homework-font-size': `${settingsStore.settings.homeworkFontSize}px` }" aria-label="作业板">
+  <aside ref="panelRef" class="homework-panel" :class="[`homework-${settingsStore.settings.homeworkPosition}`, { 'homework-float': manageFloat }]" :style="{ '--homework-font-size': `${settingsStore.settings.homeworkFontSize}px` }" aria-label="作业板" @pointerdown="resetFloatIdle">
     <header class="homework-header">
       <div><span class="homework-kicker">WORK</span><h2>作业板</h2></div>
       <div class="homework-tools">
-        <button type="button" class="micro-button icon-only" title="布置历史" aria-label="查看布置历史" @click="historyOpen = true"><FluentIcon icon="history-20-regular" :width="15" /></button>
-        <button type="button" class="micro-button icon-only" title="切换位置" aria-label="切换作业板位置" @click="cyclePosition"><FluentIcon icon="arrow-swap-20-regular" :width="15" /></button>
-        <button type="button" class="micro-button icon-only" title="减小字号" aria-label="减小作业板字号" @click="adjustFont(-1)"><FluentIcon icon="font-decrease-20-regular" :width="15" /></button>
-        <button type="button" class="micro-button icon-only" title="增大字号" aria-label="增大作业板字号" @click="adjustFont(1)"><FluentIcon icon="font-increase-20-regular" :width="15" /></button>
+        <button type="button" class="micro-button icon-only" title="导出作业" aria-label="导出作业" @click="exportHomework"><FluentIcon icon="arrow-download-20-regular" :width="15" /></button>
+        <button type="button" class="micro-button icon-only" title="布置历史" aria-label="查看布置历史" @click="historyOpen = true; selectedHistoryIds = []"><FluentIcon icon="history-20-regular" :width="15" /></button>
+        <button v-if="!manageFloat" type="button" class="micro-button icon-only" title="切换位置" aria-label="切换作业板位置" @click="cyclePosition"><FluentIcon icon="arrow-swap-20-regular" :width="15" /></button>
+        <button v-if="!manageFloat" type="button" class="micro-button icon-only" title="减小字号" aria-label="减小作业板字号" @click="adjustFont(-1)"><FluentIcon icon="font-decrease-20-regular" :width="15" /></button>
+        <button v-if="!manageFloat" type="button" class="micro-button icon-only" title="增大字号" aria-label="增大作业板字号" @click="adjustFont(1)"><FluentIcon icon="font-increase-20-regular" :width="15" /></button>
+        <button v-if="manageFloat" type="button" class="micro-button icon-only" title="关闭" aria-label="关闭悬浮作业板" @click="emit('close')"><FluentIcon icon="dismiss-20-regular" :width="15" /></button>
       </div>
     </header>
     <div ref="listRef" class="homework-list">
@@ -335,17 +419,19 @@ watch(() => settingsStore.settings.homeworkPageInterval, () => {
           <span class="homework-content" :title="item.content">{{ item.content }}</span>
         </span>
         <div class="homework-item-actions">
-          <button type="button" class="homework-action" :aria-label="`编辑${item.subject}作业`" @click="openEditor(item)">编辑</button>
+          <button type="button" class="homework-action" :aria-label="`编辑${item.subject}作业`" @click="openEditor(item)"><FluentIcon icon="edit-20-regular" :width="13" /><span>编辑</span></button>
           <button type="button" class="homework-remove" aria-label="删除作业" @click="contentStore.removeHomework(item, { toHistory: true, reason: 'manual' })">×</button>
         </div>
       </div>
       <p v-if="!items.length" class="homework-empty">还没有布置作业</p>
     </div>
     <div v-if="pageCount > 1" class="homework-pager">
-      <button type="button" class="micro-button" aria-label="上一页" @click="setPage(page - 1)">‹</button>
-      <span>{{ page }} / {{ pageCount }}</span>
-      <button type="button" class="micro-button" aria-label="下一页" @click="setPage(page + 1)">›</button>
-      <span class="homework-page-progress" aria-hidden="true"><i :key="`${page}-${settingsStore.settings.homeworkPageInterval}`" :style="{ animationDuration: `${(settingsStore.settings.homeworkPageInterval || 10) * 1000}ms` }"></i></span>
+      <div class="homework-pager-track" aria-hidden="true"><i :key="`${page}-${settingsStore.settings.homeworkPageInterval}`" :style="{ animationDuration: `${(settingsStore.settings.homeworkPageInterval || 10) * 1000}ms` }"></i></div>
+      <div class="homework-pager-controls">
+        <button type="button" class="micro-button" aria-label="上一页" @click="setPage(page - 1)">‹</button>
+        <span>{{ page }} / {{ pageCount }}</span>
+        <button type="button" class="micro-button" aria-label="下一页" @click="setPage(page + 1)">›</button>
+      </div>
     </div>
     <div class="homework-footer"><button type="button" class="homework-add-button" @click="openEditor()">布置作业</button></div>
 
@@ -375,18 +461,23 @@ watch(() => settingsStore.settings.homeworkPageInterval, () => {
           <div class="dialog-heading"><div><span class="eyebrow">HISTORY</span><h2>布置历史</h2></div><button type="button" class="dialog-close" aria-label="关闭历史" @click="historyOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></div>
           <div class="homework-history-content">
             <p v-if="!historyItems.length" class="homework-empty">暂无历史记录</p>
-            <div v-for="item in historyItems" :key="item.id" class="homework-history-item">
-              <div class="homework-history-head">
-                <strong>{{ item.subject }}</strong>
-                <span class="homework-badge" :class="item.reason === 'auto' ? 'badge-auto' : 'badge-manual'">{{ item.reason === 'auto' ? '自动删除' : '手动删除' }}</span>
-                <small v-if="formatTimeRange(item.startAt, item.dueAt)" class="homework-time-badge">{{ formatTimeRange(item.startAt, item.dueAt) }}</small>
-              </div>
-              <span class="homework-content">{{ item.content }}</span>
-            </div>
+            <label v-for="item in historyItems" :key="item.id" class="homework-history-item" :class="{ selected: selectedHistoryIds.includes(item.id) }">
+              <input type="checkbox" class="homework-history-check" :checked="selectedHistoryIds.includes(item.id)" @change="toggleHistorySelect(item.id)" />
+              <span class="homework-history-body">
+                <span class="homework-history-head">
+                  <strong>{{ item.subject }}</strong>
+                  <span class="homework-badge" :class="item.reason === 'auto' ? 'badge-auto' : 'badge-manual'">{{ item.reason === 'auto' ? '自动删除' : '手动删除' }}</span>
+                  <small v-if="formatTimeRange(item.startAt, item.dueAt)" class="homework-time-badge">{{ formatTimeRange(item.startAt, item.dueAt) }}</small>
+                </span>
+                <span class="homework-content">{{ item.content }}</span>
+              </span>
+              <button type="button" class="micro-button homework-restore" @click.prevent.stop="restoreHistoryItem(item)">恢复</button>
+            </label>
           </div>
           <div class="dialog-actions">
             <button type="button" class="focus-control" @click="historyOpen = false">关闭</button>
-            <button v-if="historyItems.length" type="button" class="focus-control danger-button" @click="contentStore.clearHomeworkHistory()">清空历史</button>
+            <button v-if="selectedHistoryIds.length" type="button" class="focus-control danger-button" @click="deleteSelectedHistory">删除所选（{{ selectedHistoryIds.length }}）</button>
+            <button v-if="historyItems.length && !selectedHistoryIds.length" type="button" class="focus-control danger-button" @click="contentStore.clearHomeworkHistory()">清空历史</button>
           </div>
         </div>
       </div>

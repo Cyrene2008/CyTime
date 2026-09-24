@@ -142,7 +142,27 @@ export const useContentStore = defineStore('content', () => {
     persist()
   }
   function clearHomeworkHistory() { content.homeworkHistory = []; persist() }
+  function restoreHomework(historyItem) {
+    if (!historyItem?.content?.trim()) return
+    content.homework.push({
+      id: id('homework'),
+      subject: historyItem.subject || '其他',
+      content: String(historyItem.content).trim(),
+      startAt: historyItem.startAt || '',
+      dueAt: historyItem.dueAt || '',
+      completed: Boolean(historyItem.completed),
+      createdAt: Date.now()
+    })
+    content.homeworkHistory = content.homeworkHistory.filter(entry => entry.id !== historyItem.id)
+    persist()
+  }
+  function removeHistoryItems(ids) {
+    const removing = new Set(ids)
+    if (!removing.size) return
+    content.homeworkHistory = content.homeworkHistory.filter(entry => !removing.has(entry.id))
+    persist()
+  }
 
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory }
+  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems }
 })

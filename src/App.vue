@@ -12,6 +12,8 @@ import { parseCountdownTarget } from './utils/time'
 import { FILING_NAME, FILING_URL } from './config/branding'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { desktopWindowAction, getDesktopStartupArgs, initDesktopBridge, isDesktop, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
+import { homeworkManageOpen } from './composables/useHomeworkManage'
+import HomeworkPanel from './components/HomeworkPanel.vue'
 import { fetchNetworkTime } from './services/timeSync'
 import { locateWeatherCity } from './services/weather'
 
@@ -227,7 +229,9 @@ function handleDesktopUri(rawUri) {
     const page = uri.hostname === 'page' ? uri.pathname.replace(/^\//, '') : ''
     if (page === 'time') router.push('/clock')
     else if (['countdown', 'timer'].includes(page)) router.push(`/${page}`)
-    else if (uri.hostname === 'countdown') {
+    else if (uri.hostname === 'homework' && (uri.pathname === '/manage' || uri.pathname === 'manage')) {
+      homeworkManageOpen.value = true
+    } else if (uri.hostname === 'countdown') {
       const targetInput = uri.searchParams.get('target')
       const length = Number(uri.searchParams.get('length'))
       const targetAt = targetInput ? parseCountdownTarget(targetInput, new Date(timeStore.now)) : length > 0 ? timeStore.now + length * 1000 : null
@@ -550,6 +554,9 @@ onUnmounted(() => {
       <div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净考试模式提示"><div class="pure-prompt-card"><h2>是否进入纯净模式(考试模式)</h2><p>该模式下仅显示当前时间，隐藏其他内容。可以点击界面上的退出纯净/考试模式按钮退出，也可点击进入纯净/考试模式按钮进入。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">不了 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div>
     </template>
     <Transition name="settings-overlay"><div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" @close="closeSettings" /></div></Transition>
+    <div v-if="homeworkManageOpen" class="homework-float-layer" role="dialog" aria-modal="true" aria-label="悬浮作业板">
+      <HomeworkPanel manage-float @close="homeworkManageOpen = false" />
+    </div>
     </div>
   </div>
 </template>
