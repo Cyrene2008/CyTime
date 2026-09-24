@@ -65,6 +65,7 @@ export const defaultSettings = {
   statusDockOffsetY: 0,
   homeworkWidth: 300,
   homeworkOffsetX: 0,
+  homeworkPageInterval: 10,
   uiScale: 100,
   timeSyncEnabled: true,
   timeSyncSource: 'system',
@@ -77,7 +78,12 @@ export const defaultSettings = {
   quoteAuthorColor: '',
   statusWeatherColor: '',
   taskWidgetColor: '',
-  taskWidgetAccentColor: ''
+  taskWidgetAccentColor: '',
+  homeworkStatusOngoingColor: '#1a8a1a',
+  homeworkStatusUpcomingColor: '#c87a00',
+  homeworkStatusEndedColor: '',
+  homeworkTimeColor: '',
+  homeworkTimeFontSize: 10
 }
 
 const cloneSettings = value => JSON.parse(JSON.stringify(value))
@@ -126,6 +132,13 @@ export function applyTheme(settings) {
   else root.style.removeProperty('--task-widget-color')
   if (settings.taskWidgetAccentColor) root.style.setProperty('--task-widget-accent-color', settings.taskWidgetAccentColor)
   else root.style.removeProperty('--task-widget-accent-color')
+  root.style.setProperty('--homework-status-ongoing-color', settings.homeworkStatusOngoingColor || '#1a8a1a')
+  root.style.setProperty('--homework-status-upcoming-color', settings.homeworkStatusUpcomingColor || '#c87a00')
+  if (settings.homeworkStatusEndedColor) root.style.setProperty('--homework-status-ended-color', settings.homeworkStatusEndedColor)
+  else root.style.removeProperty('--homework-status-ended-color')
+  if (settings.homeworkTimeColor) root.style.setProperty('--homework-time-color', settings.homeworkTimeColor)
+  else root.style.removeProperty('--homework-time-color')
+  root.style.setProperty('--homework-time-font-size', `${Math.max(8, Math.min(24, Number(settings.homeworkTimeFontSize) || 10))}px`)
 }
 
 export const useSettingsStore = defineStore('settings', () => {
