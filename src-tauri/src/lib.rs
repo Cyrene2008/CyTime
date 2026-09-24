@@ -26,11 +26,17 @@ fn open_homework_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("homework") {
         let _ = window.unminimize();
         let _ = window.show();
-        let _ = window.set_focus();
-        app.emit("cytime:homework-manage", "reveal").ok();
-        return;
+        let visible = window.is_visible().unwrap_or(false);
+        if visible {
+            let _ = window.set_focus();
+            app.emit("cytime:homework-manage", "reveal").ok();
+            return;
+        }
+        // Zombie / hidden handle: destroy and recreate so second URI works.
+        let _ = window.destroy();
     }
-    let url = WebviewUrl::App("/homework-manage".into());
+    // Always boot from SPA entry; frontend routes by window label "homework".
+    let url = WebviewUrl::App("index.html".into());
     let result = WebviewWindowBuilder::new(app, "homework", url)
         .title("CyTime 作业管理")
         .inner_size(440.0, 640.0)
@@ -42,8 +48,32 @@ fn open_homework_window(app: &AppHandle) {
         .always_on_top(true)
         .focused(true)
         .build();
-    if let Err(error) = result {
-        eprintln!("failed to open homework window: {error}");
+    match result {
+        Ok(window) => {
+            app.emit("cytime:homework-manage", "opened").ok();
+            let _ = window.set_focus();
+        }
+        Err(error) => {
+            eprintln!("failed to open homework window: {error}");
+            // Label may be stale — try once more after destroy.
+            if let Some(old) = app.get_webview_window("homework") { let _ = old.destroy(); }
+            let retry = WebviewWindowBuilder::new(app, "homework", WebviewUrl::App("index.html".into()))
+                .title("CyTime 作业管理")
+                .inner_size(440.0, 640.0)
+                .min_inner_size(360.0, 420.0)
+                .resizable(true)
+                .decorations(true)
+                .shadow(true)
+                .center()
+                .always_on_top(true)
+                .focused(true)
+                .build();
+            if let Err(retry_error) = retry {
+                eprintln!("homework window retry failed: {retry_error}");
+            } else {
+                app.emit("cytime:homework-manage", "opened").ok();
+            }
+        }
     }
 }
 

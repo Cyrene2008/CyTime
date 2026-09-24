@@ -33,6 +33,7 @@ const desktopMini = ref(false)
 const desktopWindowMode = ref('normal')
 const desktopAutoStart = ref(false)
 const fullscreenActive = ref(false)
+const isHomeworkWindow = ref(false)
 const isSettings = computed(() => settingsOpen.value)
 const purePromptOpen = ref(false)
 const purePromptSeconds = ref(10)
@@ -407,6 +408,12 @@ async function autoLocateWeather() {
 
 async function initializeDesktopWindow() {
   if (!isDesktop()) return
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    isHomeworkWindow.value = getCurrentWindow().label === 'homework'
+  } catch {}
+  // Dedicated homework window must not reshape / focus the main window.
+  if (isHomeworkWindow.value) return
   const args = await getDesktopStartupArgs()
   desktopAutoStart.value = args.includes('--cyrene-auto-start')
   const uriMode = settingsStore.settings.uriRegistration ? args.find(argument => argument.startsWith('cytime://'))?.match(/[?&]mode=(mini|normal|max|full)/)?.[1] : undefined
@@ -434,6 +441,11 @@ watch(isSettings, open => { if (!open) window.setTimeout(schedulePurePrompt, 180
 
 onMounted(async () => {
   desktopAvailable.value = await probeDesktop()
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    isHomeworkWindow.value = getCurrentWindow().label === 'homework'
+  } catch {}
+  document.documentElement.classList.toggle('homework-window-root', isHomeworkWindow.value)
   settingsStore.setExamMode(false)
   if (settingsStore.settings.showWeather) weatherStore.refresh(settingsStore.settings.weatherCityNum)
   autoLocateWeather()
@@ -468,7 +480,9 @@ onMounted(async () => {
     syncNetworkTime()
     timeSyncTimer = window.setInterval(syncNetworkTime, Math.max(5, Number(settingsStore.settings.timeSyncInterval) || 60) * 60 * 1000)
   }
-  initDesktopBridge(handleDesktopUri).then(stop => { stopDesktopBridge = stop })
+  if (!isHomeworkWindow.value) {
+    initDesktopBridge(handleDesktopUri).then(stop => { stopDesktopBridge = stop })
+  }
   quotesStore.start()
   showControlsHandler()
   window.__cytimeShowControls = showControlsHandler
@@ -497,7 +511,7 @@ onMounted(async () => {
     updateViewPadding()
   })
   syncWakeLock()
-  window.setTimeout(schedulePurePrompt, 550)
+  if (!isHomeworkWindow.value) window.setTimeout(schedulePurePrompt, 550)
 })
 onUnmounted(() => {
   timeStore.stop()

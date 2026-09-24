@@ -14,13 +14,23 @@ import SettingsView from './views/SettingsView.vue'
 import HomeworkManageView from './views/HomeworkManageView.vue'
 import './styles/app.css'
 
-const isTauriRuntime = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__ || window.location?.hostname === 'tauri.localhost' || window.location?.protocol === 'tauri:')
+const isTauriRuntime = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__ || window.__TAURI_METADATA__ || window.location?.hostname === 'tauri.localhost' || window.location?.protocol === 'tauri:')
 let desktopRuntime = isTauriRuntime()
 
 async function detectDesktopRuntime() {
   if (desktopRuntime) return true
   try { desktopRuntime = (await invoke('application_platform')) === 'tauri' } catch {}
   return desktopRuntime
+}
+
+async function isHomeworkWindow() {
+  if (!desktopRuntime) return false
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    return getCurrentWindow().label === 'homework'
+  } catch {
+    return false
+  }
 }
 
 async function hydrateDesktopStorage() {
@@ -78,7 +88,11 @@ async function bootstrap() {
   await syncServiceWorker()
   const pinia = createPinia()
   const settingsStore = useSettingsStore(pinia)
-  const startupPath = `/${['clock', 'countdown', 'timer'].includes(settingsStore.settings.startupMode) ? settingsStore.settings.startupMode : 'clock'}`
+  const homeworkWindow = await isHomeworkWindow()
+  if (homeworkWindow) document.documentElement.classList.add('homework-window-root')
+  const startupPath = homeworkWindow
+    ? '/homework-manage'
+    : `/${['clock', 'countdown', 'timer'].includes(settingsStore.settings.startupMode) ? settingsStore.settings.startupMode : 'clock'}`
 
   const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
@@ -88,7 +102,9 @@ async function bootstrap() {
       { path: '/clock', component: ClockView },
       { path: '/countdown', component: CountdownView },
       { path: '/timer', component: TimerView },
-      { path: '/settings', redirect: '/clock' }
+      { path: '/settings', redirect: '/clock' },
+      // SPA fallback for unknown paths (incl. deep-link boot)
+      { path: '/:pathMatch(.*)*', redirect: () => startupPath }
     ]
   })
 
@@ -97,6 +113,10 @@ async function bootstrap() {
     .use(router)
     .use(VueFluentWidgets)
     .mount('#app')
+
+  if (homeworkWindow && router.currentRoute.value.path !== '/homework-manage') {
+    await router.replace('/homework-manage')
+  }
 }
 
 bootstrap()
