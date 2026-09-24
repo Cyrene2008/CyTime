@@ -378,6 +378,43 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .settings-nav-project {
   font-size: 13px;
 }
+/* Kill legacy left-bar / accent border / accent-50 box on dock hover+active (first level included). */
+.settings-root-nav .settings-group-button,
+.settings-root-nav .settings-group-button:hover,
+.settings-root-nav .settings-group-button.active,
+.settings-nav-project,
+.settings-nav-project:hover,
+.settings-nav-project.active,
+.settings-subnav .settings-nav-item,
+.settings-subnav .settings-nav-item:hover,
+.settings-subnav .settings-nav-item.active,
+.settings-dock .settings-group-button,
+.settings-dock .settings-group-button:hover,
+.settings-dock .settings-group-button.active,
+.settings-dock .settings-nav-item,
+.settings-dock .settings-nav-item:hover,
+.settings-dock .settings-nav-item.active {
+  border: 0 !important;
+  border-left: 0 !important;
+  border-color: transparent !important;
+  border-radius: 8px;
+}
+.settings-root-nav .settings-group-button:hover,
+.settings-nav-project:hover,
+.settings-subnav .settings-nav-item:hover,
+.settings-dock .settings-group-button:hover,
+.settings-dock .settings-nav-item:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary);
+}
+.settings-root-nav .settings-group-button.active,
+.settings-nav-project.active,
+.settings-subnav .settings-nav-item.active,
+.settings-dock .settings-group-button.active,
+.settings-dock .settings-nav-item.active {
+  background: transparent !important;
+  color: var(--accent);
+}
 .settings-sheet .setting-card {
   border-radius: 10px;
   background: color-mix(in srgb, var(--bg-card), transparent 8%);
