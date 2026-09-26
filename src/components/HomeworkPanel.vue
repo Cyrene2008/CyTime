@@ -140,6 +140,11 @@ const panelRef = ref(null)
 const listRef = ref(null)
 let pageAnimating = false
 let activeAnim = null
+const measuredHeights = new Map()
+
+function clearMeasuredHeights() {
+  measuredHeights.clear()
+}
 
 function setPage(next) {
   const count = pageCount.value
@@ -215,8 +220,18 @@ function measurePageSize() {
   const children = [...list.children].filter(el => el.classList?.contains('homework-item'))
   if (!children.length) return
   const gap = 4
-  const maxH = Math.max(...children.map(el => el.offsetHeight))
-  const slot = maxH + gap
+  children.forEach((el, index) => {
+    const item = visibleItems.value[index]
+    if (item) measuredHeights.set(item.id, el.offsetHeight)
+  })
+  const liveIds = new Set(items.value.map(entry => entry.id))
+  for (const id of [...measuredHeights.keys()]) {
+    if (!liveIds.has(id)) measuredHeights.delete(id)
+  }
+  const heights = [...measuredHeights.values()]
+  if (!heights.length) return
+  const average = heights.reduce((sum, value) => sum + value, 0) / heights.length
+  const slot = Math.max(1, average) + gap
   const capacity = Math.max(1, Math.min(20, Math.floor((listAvailable + gap) / slot)))
   if (capacity !== pageSize.value) pageSize.value = capacity
 }
@@ -386,7 +401,10 @@ watch([editorOpen, historyOpen], ([editing, hist], previous) => {
   }
   if (wasEditing) startFloatIdle()
 })
-watch(() => [settingsStore.settings.homeworkWidth, settingsStore.settings.homeworkFontSize, settingsStore.settings.statusDockScale, settingsStore.settings.statusDockOffsetY, settingsStore.settings.homeworkPosition, settingsStore.settings.uiScale], scheduleMeasure, { flush: 'post' })
+watch(() => [settingsStore.settings.homeworkWidth, settingsStore.settings.homeworkFontSize, settingsStore.settings.statusDockScale, settingsStore.settings.statusDockOffsetY, settingsStore.settings.homeworkPosition, settingsStore.settings.uiScale], () => {
+  clearMeasuredHeights()
+  scheduleMeasure()
+}, { flush: 'post' })
 
 watch(() => settingsStore.settings.homeworkPageInterval, () => {
   startRotateTimer()
