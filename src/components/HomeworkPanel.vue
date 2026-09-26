@@ -230,8 +230,7 @@ function measurePageSize() {
   }
   const heights = [...measuredHeights.values()]
   if (!heights.length) return
-  const average = heights.reduce((sum, value) => sum + value, 0) / heights.length
-  const slot = Math.max(1, average) + gap
+  const slot = Math.max(1, ...heights) + gap
   const capacity = Math.max(1, Math.min(20, Math.floor((listAvailable + gap) / slot)))
   if (capacity !== pageSize.value) pageSize.value = capacity
 }
