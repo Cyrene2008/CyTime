@@ -90,19 +90,22 @@ async function bootstrap() {
   const settingsStore = useSettingsStore(pinia)
   const homeworkWindow = await isHomeworkWindow()
   if (homeworkWindow) document.documentElement.classList.add('homework-window-root')
-  const startupPath = homeworkWindow
-    ? '/homework-manage'
-    : `/${['clock', 'countdown', 'timer'].includes(settingsStore.settings.startupMode) ? settingsStore.settings.startupMode : 'clock'}`
+  const startupMode = (() => {
+    const stored = settingsStore.settings.startupMode === 'clock' ? 'time' : settingsStore.settings.startupMode
+    return ['time', 'countdown', 'timer'].includes(stored) ? stored : 'time'
+  })()
+  const startupPath = homeworkWindow ? '/homework-manage' : `/${startupMode}`
 
   const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
     routes: [
       { path: '/homework-manage', component: HomeworkManageView },
       { path: '/', redirect: startupPath },
-      { path: '/clock', component: ClockView },
+      { path: '/time', component: ClockView },
+      { path: '/clock', redirect: '/time' },
       { path: '/countdown', component: CountdownView },
       { path: '/timer', component: TimerView },
-      { path: '/settings', redirect: '/clock' },
+      { path: '/settings', redirect: '/time' },
       // SPA fallback for unknown paths (incl. deep-link boot)
       { path: '/:pathMatch(.*)*', redirect: () => startupPath }
     ]

@@ -7,8 +7,9 @@ const STORAGE_KEY = 'cytime.settings.v2'
 export const defaultSettings = {
   theme: 'dark-peach',
   accentColor: '',
-  startupMode: 'clock',
+  startupMode: 'time',
   startupWindowMode: 'normal',
+  idleReturnTime: false,
   uriRegistration: true,
   showClockSeconds: true,
   showDate: true,
@@ -94,7 +95,8 @@ function readStoredSettings() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem('cytime.settings.v1') || '{}')
     const base = cloneSettings(defaultSettings)
     const merged = { ...base, ...(saved && typeof saved === 'object' ? saved : {}), quoteLocalSources: { ...base.quoteLocalSources, ...(saved?.quoteLocalSources || {}) }, quoteSources: saved?.quoteSources?.cytime ? { ...base.quoteSources, ...saved.quoteSources } : base.quoteSources }
-    if (!['clock', 'countdown', 'timer'].includes(merged.startupMode)) merged.startupMode = 'clock'
+    if (merged.startupMode === 'clock') merged.startupMode = 'time'
+    if (!['time', 'countdown', 'timer'].includes(merged.startupMode)) merged.startupMode = 'time'
     return merged
   } catch {
     return cloneSettings(defaultSettings)

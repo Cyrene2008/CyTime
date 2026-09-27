@@ -68,8 +68,9 @@ let stopViewPaddingWatch
 let stopDesktopBridge
 let timeSyncTimer
 let stopRightClick
+let idleReturnTimer
 const navItems = [
-  { path: '/clock', label: '时钟', icon: 'clock-20-regular' },
+  { path: '/time', label: '时钟', icon: 'clock-20-regular' },
   { path: '/countdown', label: '倒计时', icon: 'arrow-clockwise-20-regular' },
   { path: '/timer', label: '计时器', icon: 'timer-20-regular' }
 ]
@@ -214,8 +215,17 @@ function closeSettings() {
   settingsOpen.value = false
 }
 
+function scheduleIdleReturn() {
+  window.clearTimeout(idleReturnTimer)
+  if (!settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value) return
+  idleReturnTimer = window.setTimeout(() => {
+    if (route.path !== '/time') router.push('/time')
+  }, 30000)
+}
+
 function handleDesktopUri(rawUri) {
   if (!settingsStore.settings.uriRegistration) return
+  scheduleIdleReturn()
   try {
     const uri = new URL(String(rawUri))
 
@@ -236,7 +246,7 @@ function handleDesktopUri(rawUri) {
     }
     if (isDesktop()) desktopWindowAction('show')
     const page = uri.hostname === 'page' ? uri.pathname.replace(/^\//, '') : ''
-    if (page === 'time') router.push('/clock')
+    if (page === 'time' || page === 'clock') router.push('/time')
     else if (['countdown', 'timer'].includes(page)) router.push(`/${page}`)
     else if (uri.hostname === 'countdown') {
       const targetInput = uri.searchParams.get('target')
@@ -438,6 +448,7 @@ watch(() => [settingsStore.settings.timeSyncEnabled, settingsStore.settings.time
   }
 })
 watch(isSettings, open => { if (!open) window.setTimeout(schedulePurePrompt, 180) })
+watch([() => settingsStore.settings.idleReturnTime, desktopMini], scheduleIdleReturn)
 
 onMounted(async () => {
   desktopAvailable.value = await probeDesktop()
@@ -456,6 +467,7 @@ onMounted(async () => {
     controlsHidden.value = false
     window.clearTimeout(controlsTimer)
     controlsTimer = window.setTimeout(() => { controlsHidden.value = true }, 10000)
+    scheduleIdleReturn()
   }
   window.addEventListener('pointermove', showControlsHandler, { passive: true })
   window.addEventListener('pointerdown', showControlsHandler, { passive: true })
@@ -535,6 +547,7 @@ onUnmounted(() => {
   stopViewPaddingWatch?.()
   stopDesktopBridge?.()
   window.clearTimeout(noticeTimer)
+  window.clearTimeout(idleReturnTimer)
   closePurePrompt()
   if (showControlsHandler) {
     window.removeEventListener('pointermove', showControlsHandler)
@@ -570,8 +583,8 @@ onUnmounted(() => {
         <a v-if="FILING_NAME" class="app-filing" :href="FILING_URL" target="_blank" rel="noreferrer">{{ FILING_NAME }}</a>
       </div>
       <div v-if="activeTaskCount && !settingsStore.examModeActive" ref="taskDock" class="task-docks" :class="['is-side', `task-docks-${taskSide}`, { 'is-marquee': taskOverflow }]"><div class="task-docks-track"><template v-for="copy in taskOverflow ? 2 : 1" :key="copy"><RouterLink v-for="task in timeStore.activeCountdowns" :key="`${copy}-${task.id}`" to="/countdown" class="task-widget task-widget-countdown" @click="timeStore.selectCountdown(task)"><span class="task-dot pink"></span><span>{{ task.label }}</span><strong>{{ formatDuration(countdownRemaining(task)) }}</strong></RouterLink><RouterLink v-for="task in timeStore.activeTimers" :key="`${copy}-${task.id}-timer`" to="/timer" class="task-widget task-widget-timer" @click="timeStore.selectTimer(task)"><span class="task-dot green"></span><span>{{ task.label }}</span><strong>{{ formatDuration(timeStore.timerElapsed(task)) }}</strong></RouterLink></template></div></div>
-      <div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div>
-      <div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净考试模式提示"><div class="pure-prompt-card"><h2>是否进入纯净模式(考试模式)</h2><p>该模式下仅显示当前时间，隐藏其他内容。可以点击界面上的退出纯净/考试模式按钮退出，也可点击进入纯净/考试模式按钮进入。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">不了 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div>
+      <Transition name="notice"><div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div></Transition>
+      <Transition name="pure-prompt"><div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净考试模式提示"><div class="pure-prompt-card"><h2>是否进入纯净模式(考试模式)</h2><p>该模式下仅显示当前时间，隐藏其他内容。可以点击界面上的退出纯净/考试模式按钮退出，也可点击进入纯净/考试模式按钮进入。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">不了 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div></Transition>
     </template>
     <Transition name="settings-overlay"><div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" @close="closeSettings" /></div></Transition>
     <div v-if="homeworkManageOpen" class="homework-float-layer" role="dialog" aria-modal="true" aria-label="悬浮作业板">
