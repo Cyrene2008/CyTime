@@ -128,11 +128,89 @@ const endedItems = computed(() => items.value
   .sort((a, b) => timeValue(b.dueAt, 0) - timeValue(a.dueAt, 0)))
 
 const sortedItems = computed(() => [...ongoingItems.value, ...upcomingItems.value, ...endedItems.value])
-const DEFAULT_PAGE_SIZE = 3
-const pageSize = ref(DEFAULT_PAGE_SIZE)
+
+const GAP = 4
+const DEFAULT_ITEM_HEIGHT = 84
+const MIN_ITEM_HEIGHT = 48
+
+const measuredHeights = new Map()
+const measureVersion = ref(0)
+const listHeight = ref(0)
+const mobileMode = ref(false)
+
+function estimateHeight(item) {
+  const measured = measuredHeights.get(item.id)
+  if (measured) return measured
+  let max = 0
+  for (const value of measuredHeights.values()) if (value > max) max = value
+  return max || DEFAULT_ITEM_HEIGHT
+}
+
+function packPages(list, available) {
+  const pages = []
+  let current = []
+  let used = 0
+  for (const item of list) {
+    const height = estimateHeight(item)
+    const next = current.length ? used + GAP + height : height
+    if (current.length && next > available) {
+      pages.push(current)
+      current = [item]
+      used = height
+    } else {
+      current.push(item)
+      used = next
+    }
+  }
+  if (current.length) pages.push(current)
+  return pages
+}
+
+const ongoingHeight = computed(() => {
+  measureVersion.value
+  return ongoingItems.value.reduce((sum, item, index) => sum + estimateHeight(item) + (index ? GAP : 0), 0)
+})
+const poolMaxHeight = computed(() => {
+  measureVersion.value
+  let max = 0
+  for (const item of upcomingItems.value) {
+    const height = estimateHeight(item)
+    if (height > max) max = height
+  }
+  for (const item of endedItems.value) {
+    const height = estimateHeight(item)
+    if (height > max) max = height
+  }
+  return max
+})
+const pinOngoing = computed(() => {
+  if (mobileMode.value || !ongoingItems.value.length) return false
+  if (!listHeight.value) return true
+  if (ongoingHeight.value + GAP + MIN_ITEM_HEIGHT > listHeight.value) return false
+  const poolAvailable = Math.max(MIN_ITEM_HEIGHT, listHeight.value - ongoingHeight.value - GAP)
+  if (poolMaxHeight.value > poolAvailable && poolMaxHeight.value <= listHeight.value) return false
+  return true
+})
+const pages = computed(() => {
+  measureVersion.value
+  if (mobileMode.value) {
+    const chunks = []
+    for (let index = 0; index < sortedItems.value.length; index += 4) chunks.push(sortedItems.value.slice(index, index + 4))
+    return chunks
+  }
+  if (pinOngoing.value) {
+    const pool = [...upcomingItems.value, ...endedItems.value]
+    const available = listHeight.value ? Math.max(MIN_ITEM_HEIGHT, listHeight.value - ongoingHeight.value - GAP) : 320
+    return packPages(pool, available)
+  }
+  return packPages(sortedItems.value, listHeight.value || 320)
+})
 const page = ref(1)
-const pageCount = computed(() => Math.max(1, Math.ceil(sortedItems.value.length / pageSize.value)))
-const visibleItems = computed(() => sortedItems.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
+const pageCount = computed(() => Math.max(1, pages.value.length))
+const visibleItems = computed(() => {
+  const slice = pages.value[page.value - 1] || []
+  return pinOngoing.value ? [...ongoingItems.value, ...slice] : slice
+})
 
 watch(pageCount, value => { if (page.value > value) page.value = value })
 
@@ -140,10 +218,10 @@ const panelRef = ref(null)
 const listRef = ref(null)
 let pageAnimating = false
 let activeAnim = null
-const measuredHeights = new Map()
 
 function clearMeasuredHeights() {
   measuredHeights.clear()
+  measureVersion.value++
 }
 
 function setPage(next) {
@@ -183,10 +261,8 @@ function measurePageSize() {
   const panel = panelRef.value
   const list = listRef.value
   if (!panel || !list || !panel.offsetHeight || pageAnimating) return
-  if (window.innerWidth <= 620) {
-    pageSize.value = 4
-    return
-  }
+  mobileMode.value = window.innerWidth <= 620
+  if (mobileMode.value) return
   const shell = panel.closest('.app-shell')
   const shellH = (shell && shell.clientHeight) || window.innerHeight
   let safeTop = 80
@@ -209,30 +285,27 @@ function measurePageSize() {
   panel.style.setProperty('--homework-safe-top', `${safeTop}px`)
   panel.style.setProperty('--homework-safe-bottom', `${safeBottom}px`)
   const available = Math.max(140, shellH - safeTop - safeBottom)
-  let chrome = 28 + 22
-  const header = panel.querySelector('.homework-header')
-  const footerEl = panel.querySelector('.homework-footer')
-  const pagerEl = panel.querySelector('.homework-pager')
-  if (header) chrome += header.offsetHeight
-  if (footerEl) chrome += footerEl.offsetHeight
-  if (pagerEl && pageCount.value > 1) chrome += pagerEl.offsetHeight
+  const chrome = Math.max(0, panel.offsetHeight - list.offsetHeight)
   const listAvailable = Math.max(50, available - chrome)
+  if (Math.abs(listAvailable - listHeight.value) > 1) listHeight.value = listAvailable
   const children = [...list.children].filter(el => el.classList?.contains('homework-item'))
-  if (!children.length) return
-  const gap = 4
+  let changed = false
   children.forEach((el, index) => {
     const item = visibleItems.value[index]
-    if (item) measuredHeights.set(item.id, el.offsetHeight)
+    if (!item) return
+    if (measuredHeights.get(item.id) !== el.offsetHeight) {
+      measuredHeights.set(item.id, el.offsetHeight)
+      changed = true
+    }
   })
   const liveIds = new Set(items.value.map(entry => entry.id))
   for (const id of [...measuredHeights.keys()]) {
-    if (!liveIds.has(id)) measuredHeights.delete(id)
+    if (!liveIds.has(id)) {
+      measuredHeights.delete(id)
+      changed = true
+    }
   }
-  const heights = [...measuredHeights.values()]
-  if (!heights.length) return
-  const slot = Math.max(1, ...heights) + gap
-  const capacity = Math.max(1, Math.min(20, Math.floor((listAvailable + gap) / slot)))
-  if (capacity !== pageSize.value) pageSize.value = capacity
+  if (changed) measureVersion.value++
 }
 
 let measureHandle = 0
@@ -388,7 +461,7 @@ onUnmounted(() => {
   measureHandle = 0
 })
 
-watch(visibleItems, scheduleMeasure, { flush: 'post' })
+watch(() => visibleItems.value.map(item => item.id).join('|'), scheduleMeasure, { flush: 'post' })
 watch(() => sortedItems.value.length, scheduleMeasure, { flush: 'post' })
 watch([editorOpen, historyOpen], ([editing, hist], previous) => {
   if (!props.manageFloat) return
