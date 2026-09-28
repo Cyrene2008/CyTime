@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import SettingsView from './views/SettingsView.vue'
 import { useTimeStore } from './stores/time'
@@ -26,6 +26,7 @@ const weatherStore = useWeatherStore()
 const quotesStore = useQuotesStore()
 const controlsHidden = ref(false)
 const settingsOpen = ref(false)
+const settingsPane = ref('')
 const appVersion = __APP_VERSION__
 const buildId = __BUILD_ID__
 const desktopAvailable = ref(false)
@@ -213,10 +214,11 @@ function maximizeWindow() {
   } else { desktopWindowAction('maximize'); desktopWindowMode.value = 'max' }
 }
 
-function openSettings() {
+function openSettings(pane = '') {
+  settingsPane.value = typeof pane === 'string' ? pane : ''
   settingsOpen.value = true
-  window.__cytimeShowControls?.()
 }
+provide('cytimeOpenSettings', openSettings)
 
 function closeSettings() {
   settingsOpen.value = false
@@ -588,7 +590,7 @@ onUnmounted(() => {
     <main class="clock-stage" :class="{ 'is-settings-background': isSettings }"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><component :is="Component" /></Transition></RouterView></main>
     <template v-if="!isSettings">
       <footer class="clock-footer">
-        <button type="button" class="footer-action footer-settings" aria-label="设置" @click="openSettings"><FluentIcon icon="settings-20-regular" :width="19" /></button>
+        <button type="button" class="footer-action footer-settings" aria-label="设置" @click="openSettings()"><FluentIcon icon="settings-20-regular" :width="19" /></button>
         <div class="footer-center-actions"><button type="button" class="footer-action" :aria-label="fullscreenActive ? '退出全屏' : '全屏'" @click="toggleFullscreen"><FluentIcon :icon="fullscreenActive ? 'full-screen-minimize-20-regular' : 'full-screen-maximize-20-regular'" :width="19" /><span>{{ fullscreenActive ? '退出全屏' : '全屏' }}</span></button><button type="button" class="footer-action" :aria-label="settingsStore.examModeActive ? '退出纯净模式' : '纯净/考试模式'" @click="settingsStore.examModeActive ? exitExamMode() : schedulePurePrompt()"><FluentIcon :icon="settingsStore.examModeActive ? 'eye-20-filled' : 'eye-off-20-regular'" :width="19" /><span>{{ settingsStore.examModeActive ? '退出纯净' : '纯净模式' }}</span></button></div>
       </footer>
       <div class="app-meta">
@@ -599,7 +601,7 @@ onUnmounted(() => {
       <Transition name="notice"><div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div></Transition>
       <Transition name="pure-prompt"><div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净考试模式提示"><div class="pure-prompt-card"><h2>是否进入纯净模式(考试模式)</h2><p>该模式下仅显示当前时间，隐藏其他内容。可以点击界面上的退出纯净/考试模式按钮退出，也可点击进入纯净/考试模式按钮进入。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">不了 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div></Transition>
     </template>
-    <Transition name="settings-overlay"><div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" @close="closeSettings" /></div></Transition>
+    <Transition name="settings-overlay"><div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" :initial-pane="settingsPane" @close="closeSettings" /></div></Transition>
     <div v-if="homeworkManageOpen" class="homework-float-layer" role="dialog" aria-modal="true" aria-label="悬浮作业板">
       <HomeworkPanel manage-float @close="homeworkManageOpen = false" />
     </div>

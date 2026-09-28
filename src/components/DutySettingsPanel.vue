@@ -29,7 +29,7 @@ function memberName(memberId) {
   return duty.value.members.find(member => member.id === memberId)?.name || '—'
 }
 function lineNames(line) {
-  return line.memberIds.length ? line.memberIds.map(memberName).join('、') : '待分配'
+  return line.memberIds.length ? line.memberIds.map(memberName).join('、') : '待指定'
 }
 function formatPreviewDate(dateStr) {
   const [year, month, day] = String(dateStr).split('-').map(Number)
@@ -359,7 +359,7 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
         <div class="managed-item duty-roster-head">
           <span class="duty-roster-title" @click="toggleRoster(roster)">
             <strong>{{ roster.name }}</strong>
-            <small>{{ roster.chores.length }} 项任务 · {{ roster.memberIds?.length ? `${roster.memberIds.length} 人参与` : '全体成员' }} · 已轮换 {{ rosterCount(roster) }} 次 · {{ roster.enabled === false ? '已停用' : '启用中' }}</small>
+            <small>{{ roster.chores.length }} 项任务 · {{ roster.memberIds?.length ? `${roster.memberIds.length} 人参与` : '全体成员' }} · {{ roster.mode === 'manual' ? '手动指定' : `已轮换 ${rosterCount(roster)} 次` }} · {{ roster.enabled === false ? '已停用' : '启用中' }}</small>
           </span>
           <span class="duty-member-actions">
             <button type="button" class="icon-text-button icon-only" :title="isRosterExpanded(roster) ? '收起' : '展开'" :aria-label="isRosterExpanded(roster) ? '收起' : '展开'" @click="toggleRoster(roster)"><FluentIcon :icon="isRosterExpanded(roster) ? 'chevron-up-20-regular' : 'chevron-down-20-regular'" :width="15" /></button>
@@ -372,6 +372,8 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
             <div class="inline-form">
               <input class="duty-name-input" :value="roster.name" @change="contentStore.updateRoster(roster, { name: $event.target.value.trim() || roster.name })" />
               <button type="button" class="toggle-chip" :class="{ active: roster.enabled !== false }" @click="contentStore.updateRoster(roster, { enabled: roster.enabled === false })">启用</button>
+              <button type="button" class="toggle-chip" :class="{ active: roster.mode !== 'manual' }" @click="contentStore.updateRoster(roster, { mode: 'auto' })">自动轮换</button>
+              <button type="button" class="toggle-chip" :class="{ active: roster.mode === 'manual' }" @click="contentStore.updateRoster(roster, { mode: 'manual' })">手动指定</button>
             </div>
           </div>
           <div class="duty-field">
@@ -388,7 +390,7 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
               <small class="duty-hint">未选 = 全体成员</small>
             </div>
           </div>
-          <div class="duty-field">
+          <div v-if="roster.mode !== 'manual'" class="duty-field">
             <span>从今天起校准</span>
             <div class="inline-form">
               <button type="button" class="subtle-button" @click="shiftAnchor(roster, 1)">换下一位</button>
@@ -472,13 +474,13 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
         <div class="duty-preview-head">
           <span class="duty-preview-date">
             <strong>{{ formatPreviewDate(row.date) }}</strong>
-            <small>第 {{ row.occurrence + 1 }} 次</small>
+            <small v-if="previewRoster?.mode !== 'manual'">第 {{ row.occurrence + 1 }} 次</small>
             <em v-if="row.date === localDateStr()" class="duty-flag duty-flag-today">今天</em>
             <em v-if="row.anchored" class="duty-flag">已定次</em>
             <em v-if="row.overridden" class="duty-flag">已手动</em>
           </span>
           <span class="duty-member-actions">
-            <button type="button" class="icon-text-button" :class="{ 'duty-active-button': calibratingDate === row.date }" @click="toggleCalibrate(row)"><FluentIcon icon="calendar-20-regular" :width="14" /> {{ calibratingDate === row.date ? '收起定次' : '定次' }}</button>
+            <button v-if="previewRoster?.mode !== 'manual'" type="button" class="icon-text-button" :class="{ 'duty-active-button': calibratingDate === row.date }" @click="toggleCalibrate(row)"><FluentIcon icon="calendar-20-regular" :width="14" /> {{ calibratingDate === row.date ? '收起定次' : '定次' }}</button>
             <button type="button" class="icon-text-button" @click="editingDate === row.date ? closeEditor() : openEditor(row)"><FluentIcon :icon="editingDate === row.date ? 'chevron-up-20-regular' : 'edit-20-regular'" :width="14" /> {{ editingDate === row.date ? '收起' : '改' }}</button>
           </span>
         </div>

@@ -103,7 +103,8 @@ export function eligiblePool(duty, roster, chore) {
 }
 
 export function resolveRosterDay(duty, roster, dateStr, today = localDateStr(), forcedOccurrence = null) {
-  const occurrence = forcedOccurrence === null || forcedOccurrence === undefined
+  const manual = roster.mode === 'manual'
+  const occurrence = manual ? 0 : forcedOccurrence === null || forcedOccurrence === undefined
     ? occurrenceIndex(duty, roster, dateStr, today)
     : Math.max(0, forcedOccurrence)
   const overrides = duty.overrides?.[dateStr]?.[roster.id] || []
@@ -114,6 +115,10 @@ export function resolveRosterDay(duty, roster, dateStr, today = localDateStr(), 
     if (override) {
       (override.memberIds || []).forEach(id => used.add(id))
       lines.push({ choreId: chore.id, name: chore.name, memberIds: [...(override.memberIds || [])], overridden: true, extra: false })
+      continue
+    }
+    if (manual) {
+      lines.push({ choreId: chore.id, name: chore.name, memberIds: [], overridden: false, extra: false })
       continue
     }
     const slots = Math.max(1, Number(chore.slots) || 1)

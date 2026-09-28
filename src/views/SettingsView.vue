@@ -15,7 +15,7 @@ import LocalQuoteSourcePanel from '../components/LocalQuoteSourcePanel.vue'
 import DutySettingsPanel from '../components/DutySettingsPanel.vue'
 
 const emit = defineEmits(['close'])
-const props = defineProps({ desktopAvailable: { type: Boolean, default: false } })
+const props = defineProps({ desktopAvailable: { type: Boolean, default: false }, initialPane: { type: String, default: '' } })
 const isDesktop = () => props.desktopAvailable || detectDesktop()
 const settingsStore = useSettingsStore()
 const contentStore = useContentStore()
@@ -40,6 +40,13 @@ const groups = [
   { id: 'content', label: '内容语录', description: '刷新、样式与渠道管理', icon: 'book-open-20-regular', items: [{ id: 'refresh', label: '刷新策略', icon: 'arrow-clockwise-20-regular' }, { id: 'effects', label: '语录样式', icon: 'text-20-regular' }, { id: 'channels', label: '语录渠道', icon: 'book-open-20-regular' }] },
   { id: 'system', label: '系统数据', description: '校时、导入导出与更新', icon: 'database-20-regular', items: [{ id: 'calibration', label: '时间校准', icon: 'time-and-weather-20-regular' }, { id: 'updates', label: '应用更新', icon: 'arrow-sync-20-regular' }, { id: 'data', label: '设置数据', icon: 'database-20-regular' }] }
 ]
+if (props.initialPane) {
+  const targetGroup = groups.find(group => group.items.some(item => item.id === props.initialPane))
+  if (targetGroup) {
+    activeGroup.value = targetGroup
+    activePane.value = props.initialPane
+  }
+}
 const startupModeOptions = [{ value: 'time', label: '时钟' }, { value: 'countdown', label: '倒计时' }, { value: 'timer', label: '计时器' }]
 const fontOptions = [{ value: 'wengfaluosi', label: '翁法罗斯（默认）' }, { value: 'system', label: '系统字体' }, { value: 'mono', label: '等宽数字' }, { value: 'serif', label: '衬线数字' }]
 const backgroundOptions = [{ value: 'mica', label: 'Mica' }, { value: 'acrylic', label: 'Acrylic' }, { value: 'solid', label: '纯色' }]

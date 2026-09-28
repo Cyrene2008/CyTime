@@ -251,7 +251,7 @@ export const useContentStore = defineStore('content', () => {
     return added
   }
   function addRoster(name) {
-    const roster = { id: id('roster'), name: String(name || '').trim() || '新名单', enabled: true, weekdays: [], memberIds: [], chores: [], offset: 0 }
+    const roster = { id: id('roster'), name: String(name || '').trim() || '新名单', enabled: true, mode: 'auto', weekdays: [], memberIds: [], chores: [], offset: 0 }
     content.duty.rosters.push(roster)
     persist()
     return roster
