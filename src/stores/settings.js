@@ -22,6 +22,7 @@ export const defaultSettings = {
   showHomework: false,
   showBlackboard: true,
   blackboardPosition: 'auto',
+  blackboardFontScale: 100,
   showSchedule: true,
   homeworkPosition: 'left',
   homeworkFontSize: 13,
@@ -137,6 +138,7 @@ export function applyTheme(settings) {
   root.style.setProperty('--status-dock-offset-y', `${Math.max(-16, Math.min(240, Number(settings.statusDockOffsetY) || 0))}px`)
   root.style.setProperty('--homework-width', `${Math.max(200, Math.min(520, Number(settings.homeworkWidth) || 300))}px`)
   root.style.setProperty('--homework-offset-x', `${Math.max(0, Math.min(240, Number(settings.homeworkOffsetX) || 0))}px`)
+  root.style.setProperty('--blackboard-font-scale', String(Math.max(70, Math.min(160, Number(settings.blackboardFontScale) || 100)) / 100))
   root.style.setProperty('--ui-scale', String(Math.max(50, Math.min(200, settings.uiScale)) / 100))
   root.style.setProperty('--widget-font-size', `${Math.max(10, Math.min(32, Number(settings.widgetFontSize) || 17))}px`)
   root.style.setProperty('--widget-label-font-size', `${Math.max(8, Math.min(20, Number(settings.widgetLabelFontSize) || 11))}px`)

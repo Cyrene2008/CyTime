@@ -1,7 +1,7 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { useContentStore } from '../stores/content'
-import { localDateStr, dateAdd, countOccurrences, resolveRosterDay, rosterApplies, dutyStats } from '../services/duty'
+import { localDateStr, dateAdd, countOccurrences, occurrenceIndex, eligiblePool, resolveRosterDay, rosterApplies, dutyStats } from '../services/duty'
 import { parseRosterFile, serializeRosterFile } from '../utils/dutyRoster'
 
 defineProps({ draft: { type: Object, required: true } })
@@ -155,6 +155,11 @@ function removeHoliday(dateStr) {
   contentStore.updateDuty({ holidays: (duty.value.holidays || []).filter(day => day !== dateStr) })
 }
 
+function shiftAnchor(roster, delta) {
+  const current = occurrenceIndex(duty.value, roster, localDateStr())
+  contentStore.setRosterAnchor(roster, localDateStr(), Math.max(0, current + delta))
+}
+
 // ---- 排班预览与单日调整
 const previewRosterId = ref('')
 const statsRosterId = ref('')
@@ -194,7 +199,8 @@ const previewRows = computed(() => {
     rows.push({
       date,
       ...resolveRosterDay(duty.value, roster, date, today),
-      overridden: Boolean(duty.value.overrides[date]?.[roster.id]?.length)
+      overridden: Boolean(duty.value.overrides[date]?.[roster.id]?.length),
+      anchored: Boolean(duty.value.anchors?.[roster.id]?.[date] !== undefined)
     })
     date = rosterNextDate(roster, date, 1)
   }
@@ -247,6 +253,37 @@ function restoreDay() {
   if (!roster || !editingDate.value) return
   contentStore.clearOverride(editingDate.value, roster.id)
   loadLines(editingDate.value)
+}
+
+// ---- 定次（按天校准索引）
+const calibratingDate = ref('')
+function toggleCalibrate(row) {
+  calibratingDate.value = calibratingDate.value === row.date ? '' : row.date
+}
+const calibrateCandidates = computed(() => {
+  const roster = previewRoster.value
+  const date = calibratingDate.value
+  if (!roster || !date) return []
+  const poolSize = roster.chores.length
+    ? Math.max(...roster.chores.map(chore => eligiblePool(duty.value, roster, chore).length))
+    : duty.value.members.length
+  const size = Math.max(1, Math.min(poolSize || 1, 44))
+  const today = localDateStr()
+  const out = []
+  for (let index = 0; index < size; index++) {
+    out.push({ index, lines: resolveRosterDay(duty.value, roster, date, today, index).lines })
+  }
+  return out
+})
+function applyAnchor(row, index) {
+  const roster = previewRoster.value
+  if (!roster) return
+  contentStore.setRosterAnchor(roster, row.date, index)
+}
+function clearAnchor(dateStr) {
+  const roster = previewRoster.value
+  if (!roster) return
+  contentStore.clearRosterAnchor(roster, dateStr)
 }
 
 // ---- 次数统计
@@ -352,12 +389,12 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
             </div>
           </div>
           <div class="duty-field">
-            <span>轮换校准（当前偏移 {{ roster.offset || 0 }}）</span>
+            <span>从今天起校准</span>
             <div class="inline-form">
-              <button type="button" class="subtle-button" @click="contentStore.setRosterOffset(roster, 1)">换下一位</button>
-              <button type="button" class="subtle-button" @click="contentStore.setRosterOffset(roster, -1)">换上一位</button>
-              <button type="button" class="subtle-button" @click="contentStore.reanchorRoster(roster)">从今天起回到第 1 次</button>
+              <button type="button" class="subtle-button" @click="shiftAnchor(roster, 1)">换下一位</button>
+              <button type="button" class="subtle-button" @click="shiftAnchor(roster, -1)">换上一位</button>
             </div>
+            <small class="duty-hint">从今天锚定，不改已过去的记录；精确到某天的「定为第 N 次」在排班预览里。未启动软件的日子不计入索引，不会自己往后跑。</small>
           </div>
           <div class="duty-field">
             <span>值日任务</span>
@@ -437,9 +474,11 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
             <strong>{{ formatPreviewDate(row.date) }}</strong>
             <small>第 {{ row.occurrence + 1 }} 次</small>
             <em v-if="row.date === localDateStr()" class="duty-flag duty-flag-today">今天</em>
+            <em v-if="row.anchored" class="duty-flag">已定次</em>
             <em v-if="row.overridden" class="duty-flag">已手动</em>
           </span>
           <span class="duty-member-actions">
+            <button type="button" class="icon-text-button" :class="{ 'duty-active-button': calibratingDate === row.date }" @click="toggleCalibrate(row)">{{ calibratingDate === row.date ? '收起定次' : '定次' }}</button>
             <button type="button" class="icon-text-button" @click="editingDate === row.date ? closeEditor() : openEditor(row)">{{ editingDate === row.date ? '收起' : '改' }}</button>
           </span>
         </div>
@@ -462,6 +501,17 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
             <button type="button" class="subtle-button" @click="addExtraLine">加一项</button>
             <button type="button" class="subtle-button" @click="restoreDay">复原为自动</button>
             <button type="button" class="subtle-button" @click="closeEditor">完成</button>
+          </div>
+        </div>
+        <div v-if="calibratingDate === row.date" class="duty-editor duty-calibrate">
+          <p class="duty-hint">把这天定为第 N 次起始：只影响这天及之后的自动轮换，不改已过去的记录；未启动软件的日子不计数，不会自己往后跑。</p>
+          <div v-for="candidate in calibrateCandidates" :key="candidate.index" class="duty-candidate" :class="{ active: row.anchored && candidate.index === row.occurrence }" @click="applyAnchor(row, candidate.index)">
+            <strong>第 {{ candidate.index + 1 }} 次</strong>
+            <span v-for="line in candidate.lines" :key="line.choreId">{{ line.name }}：{{ lineNames(line) }}</span>
+          </div>
+          <div class="inline-form">
+            <button v-if="row.anchored" type="button" class="subtle-button" @click="clearAnchor(row.date)">清除定次（恢复自动）</button>
+            <button type="button" class="subtle-button" @click="calibratingDate = ''">完成</button>
           </div>
         </div>
       </div>

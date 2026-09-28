@@ -64,13 +64,22 @@ function selectTask(item) {
   if (item.kind === 'countdown') timeStore.selectCountdown(item.task)
   else timeStore.selectTimer(item.task)
 }
+
+function adjustFont(amount) {
+  const next = Math.max(70, Math.min(160, (Number(settingsStore.settings.blackboardFontScale) || 100) + amount * 5))
+  settingsStore.update({ blackboardFontScale: next })
+}
 </script>
 
 <template>
   <aside class="blackboard-panel" :class="`blackboard-${side}`" aria-label="小黑板">
     <header class="blackboard-header">
       <div><span class="blackboard-kicker">BLACKBOARD</span><h2>小黑板</h2></div>
-      <span v-if="previewing" class="blackboard-preview-badge">预览</span>
+      <div class="blackboard-head-actions">
+        <span v-if="previewing" class="blackboard-preview-badge">预览</span>
+        <button type="button" class="micro-button icon-only" title="减小字号" aria-label="减小黑板字号" @click="adjustFont(-1)"><FluentIcon icon="font-decrease-20-regular" :width="14" /></button>
+        <button type="button" class="micro-button icon-only" title="增大字号" aria-label="增大黑板字号" @click="adjustFont(1)"><FluentIcon icon="font-increase-20-regular" :width="14" /></button>
+      </div>
     </header>
     <div v-if="tasks.length" class="blackboard-timers">
       <RouterLink v-for="item in tasks" :key="item.key" :to="item.to" class="blackboard-timer" @click="selectTask(item)">

@@ -39,7 +39,7 @@ export function rosterApplies(duty, roster, dateStr, today = localDateStr()) {
 }
 
 export function countOccurrences(duty, roster, dateStr, today = localDateStr()) {
-  let count = duty.schoolDays.filter(day => day <= dateStr && rulesPass(duty, roster, day)).length
+  let count = duty.schoolDays.filter(day => day <= dateStr && day <= today && rulesPass(duty, roster, day)).length
   if (dateStr > today) {
     for (let day = dateAdd(today, 1); day && day <= dateStr; day = dateAdd(day, 1)) {
       if (rulesPass(duty, roster, day)) count++
@@ -48,7 +48,34 @@ export function countOccurrences(duty, roster, dateStr, today = localDateStr()) 
   return count
 }
 
+function latestAnchor(duty, roster, dateStr) {
+  const anchors = duty.anchors?.[roster.id]
+  if (!anchors) return null
+  let bestDate = null
+  for (const date of Object.keys(anchors)) {
+    if (date <= dateStr && (bestDate === null || date > bestDate)) bestDate = date
+  }
+  if (bestDate === null) return null
+  return { date: bestDate, index: Math.max(0, Number(anchors[bestDate]) || 0) }
+}
+
+function countBetween(duty, roster, from, to, today) {
+  if (!from || from > to) return 0
+  let count = 0
+  for (const day of duty.schoolDays) {
+    if (day >= from && day <= to && day <= today && rulesPass(duty, roster, day)) count++
+  }
+  if (to > today) {
+    for (let day = dateAdd(today, 1); day && day <= to; day = dateAdd(day, 1)) {
+      if (day >= from && rulesPass(duty, roster, day)) count++
+    }
+  }
+  return count
+}
+
 export function occurrenceIndex(duty, roster, dateStr, today = localDateStr()) {
+  const anchor = latestAnchor(duty, roster, dateStr)
+  if (anchor) return anchor.index + countBetween(duty, roster, dateAdd(anchor.date, 1), dateStr, today)
   return countOccurrences(duty, roster, dateStr, today) - 1 + (roster.offset || 0)
 }
 
@@ -75,8 +102,10 @@ export function eligiblePool(duty, roster, chore) {
   return pool
 }
 
-export function resolveRosterDay(duty, roster, dateStr, today = localDateStr()) {
-  const occurrence = occurrenceIndex(duty, roster, dateStr, today)
+export function resolveRosterDay(duty, roster, dateStr, today = localDateStr(), forcedOccurrence = null) {
+  const occurrence = forcedOccurrence === null || forcedOccurrence === undefined
+    ? occurrenceIndex(duty, roster, dateStr, today)
+    : Math.max(0, forcedOccurrence)
   const overrides = duty.overrides?.[dateStr]?.[roster.id] || []
   const used = new Set()
   const lines = []

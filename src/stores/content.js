@@ -14,6 +14,7 @@ const defaultDuty = () => ({
   rosters: [],
   schoolDays: [],
   overrides: {},
+  anchors: {},
   skipWeekends: false,
   holidays: []
 })
@@ -38,6 +39,7 @@ function normalizeDuty(saved) {
   if (!Array.isArray(duty.rosters)) duty.rosters = []
   if (!Array.isArray(duty.schoolDays)) duty.schoolDays = []
   if (!duty.overrides || typeof duty.overrides !== 'object') duty.overrides = {}
+  if (!duty.anchors || typeof duty.anchors !== 'object') duty.anchors = {}
   if (!Array.isArray(duty.holidays)) duty.holidays = []
   return duty
 }
@@ -263,6 +265,7 @@ export const useContentStore = defineStore('content', () => {
     Object.keys(content.duty.overrides).forEach(date => {
       if (content.duty.overrides[date]) delete content.duty.overrides[date][roster.id]
     })
+    delete content.duty.anchors[roster.id]
     persist()
   }
   function addChore(roster, chore) {
@@ -308,6 +311,19 @@ export const useContentStore = defineStore('content', () => {
     roster.offset = Number(roster.offset || 0) + delta
     persist()
   }
+  function setRosterAnchor(roster, dateStr, index) {
+    if (!dateStr) return
+    if (!content.duty.anchors[roster.id]) content.duty.anchors[roster.id] = {}
+    content.duty.anchors[roster.id][dateStr] = Math.max(0, Number(index) || 0)
+    persist()
+  }
+  function clearRosterAnchor(roster, dateStr) {
+    const byRoster = content.duty.anchors[roster.id]
+    if (!byRoster) return
+    delete byRoster[dateStr]
+    if (!Object.keys(byRoster).length) delete content.duty.anchors[roster.id]
+    persist()
+  }
   function reanchorRoster(roster) {
     const count = countOccurrences(content.duty, roster, localDateStr())
     roster.offset = 1 - count
@@ -315,5 +331,5 @@ export const useContentStore = defineStore('content', () => {
   }
 
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster }
+  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor }
 })
