@@ -69,6 +69,7 @@ let stopDesktopBridge
 let timeSyncTimer
 let stopRightClick
 let idleReturnTimer
+let schoolDayTimer
 const navItems = [
   { path: '/time', label: '时钟', icon: 'clock-20-regular' },
   { path: '/countdown', label: '倒计时', icon: 'arrow-clockwise-20-regular' },
@@ -460,6 +461,8 @@ onMounted(async () => {
   settingsStore.setExamMode(false)
   if (settingsStore.settings.showWeather) weatherStore.refresh(settingsStore.settings.weatherCityNum)
   autoLocateWeather()
+  contentStore.recordSchoolDay()
+  schoolDayTimer = window.setInterval(() => contentStore.recordSchoolDay(), 60000)
   dayRotationTimer = window.setInterval(() => { if (upcomingDays.value.length > 1) dayRotation.value = (dayRotation.value + 1) % upcomingDays.value.length }, 15000)
   weatherTimer = window.setInterval(() => { if (settingsStore.settings.showWeather) weatherStore.refresh(settingsStore.settings.weatherCityNum, true) }, 30 * 60 * 1000)
   showControlsHandler = () => {
@@ -479,6 +482,7 @@ onMounted(async () => {
   syncAfterVisibilityChange = () => {
     syncWakeLock()
     timeStore.sync()
+    contentStore.recordSchoolDay()
   }
   document.addEventListener('visibilitychange', syncAfterVisibilityChange)
   window.addEventListener('focus', syncAfterVisibilityChange)
@@ -531,6 +535,7 @@ onUnmounted(() => {
   window.clearInterval(weatherTimer)
   window.clearInterval(timeSyncTimer)
   window.clearInterval(dayRotationTimer)
+  window.clearInterval(schoolDayTimer)
   window.clearTimeout(controlsTimer)
   if (window.__cytimeCountdownHandlers === countdownHandlers) {
     countdownHandlers.stop()

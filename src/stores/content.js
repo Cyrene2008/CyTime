@@ -1,11 +1,22 @@
 import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { persistDesktopValue } from '../services/desktop'
+import { localDateStr, countOccurrences } from '../services/duty'
+import { sortMembersPinyin } from '../utils/dutyRoster'
 import quoteData from '../data/quotes.jsonc'
 
 const STORAGE_KEY = 'cytime.content.v1'
 
 const { dailyQuotes, flameJourneyQuotes, quoteMetadata, universityMottos } = quoteData
+
+const defaultDuty = () => ({
+  members: [],
+  rosters: [],
+  schoolDays: [],
+  overrides: {},
+  skipWeekends: false,
+  holidays: []
+})
 
 const defaultContent = {
   importantDays: [
@@ -17,7 +28,18 @@ const defaultContent = {
   universityMottos: [...universityMottos],
   schedule: [],
   homework: [],
-  homeworkHistory: []
+  homeworkHistory: [],
+  duty: defaultDuty()
+}
+
+function normalizeDuty(saved) {
+  const duty = { ...defaultDuty(), ...(saved && typeof saved === 'object' ? saved : {}) }
+  if (!Array.isArray(duty.members)) duty.members = []
+  if (!Array.isArray(duty.rosters)) duty.rosters = []
+  if (!Array.isArray(duty.schoolDays)) duty.schoolDays = []
+  if (!duty.overrides || typeof duty.overrides !== 'object') duty.overrides = {}
+  if (!Array.isArray(duty.holidays)) duty.holidays = []
+  return duty
 }
 
 function readContent() {
@@ -32,7 +54,8 @@ function readContent() {
       universityMottos,
       schedule: Array.isArray(saved.schedule) ? saved.schedule : [],
       homework: Array.isArray(saved.homework) ? saved.homework : [],
-      homeworkHistory: Array.isArray(saved.homeworkHistory) ? saved.homeworkHistory : []
+      homeworkHistory: Array.isArray(saved.homeworkHistory) ? saved.homeworkHistory : [],
+      duty: normalizeDuty(saved.duty)
     }
   } catch {
     return structuredClone(defaultContent)
@@ -163,6 +186,134 @@ export const useContentStore = defineStore('content', () => {
     persist()
   }
 
+  function recordSchoolDay(dateStr = localDateStr()) {
+    if (!dateStr || content.duty.schoolDays.includes(dateStr)) return false
+    content.duty.schoolDays.push(dateStr)
+    content.duty.schoolDays.sort()
+    persist()
+    return true
+  }
+  function updateDuty(patch) {
+    Object.assign(content.duty, patch)
+    persist()
+  }
+  function sortMembers() {
+    content.duty.members = sortMembersPinyin(content.duty.members)
+  }
+  function addMember(member) {
+    const name = String(member?.name || '').trim()
+    if (!name) return null
+    const entry = {
+      id: id('member'),
+      name,
+      enName: String(member.enName || '').trim(),
+      gender: member.gender === 'female' ? 'female' : member.gender === 'male' ? 'male' : ''
+    }
+    content.duty.members.push(entry)
+    sortMembers()
+    persist()
+    return entry
+  }
+  function updateMember(member, patch) {
+    if (patch.name !== undefined) member.name = String(patch.name).trim() || member.name
+    if (patch.enName !== undefined) member.enName = String(patch.enName).trim()
+    if (patch.gender !== undefined) member.gender = patch.gender
+    sortMembers()
+    persist()
+  }
+  function removeMember(member) {
+    content.duty.members = content.duty.members.filter(item => item.id !== member.id)
+    content.duty.rosters.forEach(roster => {
+      roster.memberIds = (roster.memberIds || []).filter(memberId => memberId !== member.id)
+      ;(roster.chores || []).forEach(chore => { if (chore.queue) chore.queue = chore.queue.filter(memberId => memberId !== member.id) })
+    })
+    persist()
+  }
+  function importMembers(list) {
+    let added = 0
+    const existing = new Set(content.duty.members.map(member => member.name))
+    for (const item of list || []) {
+      const name = String(item?.name || '').trim()
+      if (!name || existing.has(name)) continue
+      existing.add(name)
+      content.duty.members.push({
+        id: id('member'),
+        name,
+        enName: String(item.enName || '').trim(),
+        gender: item.gender === 'female' ? 'female' : item.gender === 'male' ? 'male' : ''
+      })
+      added++
+    }
+    if (added) sortMembers()
+    persist()
+    return added
+  }
+  function addRoster(name) {
+    const roster = { id: id('roster'), name: String(name || '').trim() || '新名单', enabled: true, weekdays: [], memberIds: [], chores: [], offset: 0 }
+    content.duty.rosters.push(roster)
+    persist()
+    return roster
+  }
+  function updateRoster(roster, patch) {
+    Object.assign(roster, patch)
+    persist()
+  }
+  function removeRoster(roster) {
+    content.duty.rosters = content.duty.rosters.filter(item => item.id !== roster.id)
+    Object.keys(content.duty.overrides).forEach(date => {
+      if (content.duty.overrides[date]) delete content.duty.overrides[date][roster.id]
+    })
+    persist()
+  }
+  function addChore(roster, chore) {
+    const entry = {
+      id: id('chore'),
+      name: String(chore?.name || '').trim() || '新任务',
+      slots: Math.max(1, Number(chore?.slots) || 1),
+      genderRule: ['no-female', 'no-male'].includes(chore?.genderRule) ? chore.genderRule : 'any',
+      phase: Number(chore?.phase) || 0,
+      noRepeat: chore?.noRepeat !== false,
+      queue: Array.isArray(chore?.queue) ? [...chore.queue] : []
+    }
+    roster.chores.push(entry)
+    persist()
+    return entry
+  }
+  function updateChore(chore, patch) {
+    Object.assign(chore, patch)
+    persist()
+  }
+  function removeChore(roster, chore) {
+    roster.chores = roster.chores.filter(item => item.id !== chore.id)
+    Object.keys(content.duty.overrides).forEach(date => {
+      const byRoster = content.duty.overrides[date]
+      if (byRoster?.[roster.id]) byRoster[roster.id] = byRoster[roster.id].filter(entry => entry.choreId !== chore.id)
+    })
+    persist()
+  }
+  function setOverride(dateStr, rosterId, entries) {
+    if (!dateStr || !rosterId) return
+    if (!content.duty.overrides[dateStr]) content.duty.overrides[dateStr] = {}
+    content.duty.overrides[dateStr][rosterId] = entries
+    persist()
+  }
+  function clearOverride(dateStr, rosterId) {
+    const byRoster = content.duty.overrides[dateStr]
+    if (!byRoster) return
+    delete byRoster[rosterId]
+    if (!Object.keys(byRoster).length) delete content.duty.overrides[dateStr]
+    persist()
+  }
+  function setRosterOffset(roster, delta) {
+    roster.offset = Number(roster.offset || 0) + delta
+    persist()
+  }
+  function reanchorRoster(roster) {
+    const count = countOccurrences(content.duty, roster, localDateStr())
+    roster.offset = 1 - count
+    persist()
+  }
+
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems }
+  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster }
 })
