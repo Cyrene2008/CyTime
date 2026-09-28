@@ -213,7 +213,8 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .segmented-two { grid-template-columns: repeat(2, 1fr); }
 .autostart-mode { margin-top: 12px; }
 
-.exam-mode .clock-view, .exam-mode .focus-view { padding-bottom: clamp(56px, 8vh, 84px); }
+.exam-mode .clock-view { padding-top: 0; padding-bottom: 0; }
+.exam-mode .focus-view { padding-top: 0; padding-bottom: clamp(56px, 8vh, 84px); }
 .mini-mode .clock-view { padding-bottom: clamp(64px, 10vh, 96px); }
 .mini-mode .focus-view { padding-bottom: 76px; }
 
@@ -540,7 +541,7 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .duty-candidate span { color: var(--text-muted); font-size: 10px; }
 .duty-candidate.active span { color: var(--text-secondary); }
 
-/* ³Á½þÄ£Ê½£ºÐ¡×é¼þÈ¥Íâ¿ÇÈÚ±³¾°£¬±£ÁôÎÄ×Ö¶Ô±ÈÓë×´Ì¬É« */
+/* ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½È¥ï¿½ï¿½ï¿½ï¿½Ú±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¶Ô±ï¿½ï¿½ï¿½×´Ì¬É« */
 [data-immersive='on'] .homework-panel,
 [data-immersive='on'] .blackboard-panel,
 [data-immersive='on'] .task-widget,

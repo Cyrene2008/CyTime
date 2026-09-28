@@ -127,6 +127,10 @@ function syncContentSafeTop() {
 function updateViewPadding() {
   const shell = shellRef.value
   if (!shell) return
+  if (settingsStore.examModeActive) {
+    for (const view of shell.querySelectorAll('.clock-view, .focus-view')) view.style.paddingTop = ''
+    return
+  }
   const shellRect = shell.getBoundingClientRect()
   const scale = shell.offsetWidth ? shellRect.width / shell.offsetWidth : 1
   const dockBottom = statusDockRef.value ? (statusDockRef.value.getBoundingClientRect().bottom - shellRect.top) / scale : 0
