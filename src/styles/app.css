@@ -539,3 +539,24 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .duty-candidate strong { color: var(--text-primary); white-space: nowrap; }
 .duty-candidate span { color: var(--text-muted); font-size: 10px; }
 .duty-candidate.active span { color: var(--text-secondary); }
+
+/* 沉浸模式：小组件去外壳融背景，保留文字对比与状态色 */
+[data-immersive='on'] .homework-panel,
+[data-immersive='on'] .blackboard-panel,
+[data-immersive='on'] .task-widget,
+[data-immersive='on'] .status-dock {
+  border-color: transparent;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--bg-card-solid), transparent 55%);
+  backdrop-filter: blur(18px);
+}
+[data-immersive='on'] .status-dock { background: color-mix(in srgb, var(--bg-card-solid), transparent 62%); }
+[data-immersive='on'] .homework-header,
+[data-immersive='on'] .blackboard-header {
+  padding-bottom: 9px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent), transparent 76%);
+}
+.subtle-button .fluent-icon, .icon-text-button .fluent-icon, .save-button .fluent-icon { margin-right: 5px; }
+.icon-text-button.icon-only, .subtle-button.icon-only { padding: 0 8px; }
+.icon-text-button.icon-only .fluent-icon, .subtle-button.icon-only .fluent-icon { margin-right: 0; }
+.fluent-toast-container.fluent-toast-container { top: auto; right: 24px; bottom: 84px; }

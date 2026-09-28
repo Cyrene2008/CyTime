@@ -23,6 +23,7 @@ export const defaultSettings = {
   showBlackboard: true,
   blackboardPosition: 'auto',
   blackboardFontScale: 100,
+  immersiveMode: false,
   showSchedule: true,
   homeworkPosition: 'left',
   homeworkFontSize: 13,
@@ -116,6 +117,7 @@ export function applyTheme(settings) {
   root.style.colorScheme = dark ? 'dark' : 'light'
   root.dataset.font = settings.fontFamily
   root.dataset.background = settings.background
+  root.dataset.immersive = settings.immersiveMode ? 'on' : 'off'
 
   // One accent → full Fluent ramp (same idea as VueFluentWidgets accentColor).
   const accent = (settings.accentColor || '').trim()

@@ -313,10 +313,10 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
     <div class="card-toolbar">
       <div><h3>导入与导出</h3><p>支持 CSV / JSON / XLSX，兼容点名器名单格式；导入后按拼音排序。</p></div>
       <div class="inline-form">
-        <button type="button" class="subtle-button" @click="rosterFileInput?.click()">导入文件</button>
+        <button type="button" class="subtle-button" @click="rosterFileInput?.click()"><FluentIcon icon="arrow-upload-20-regular" :width="14" /> 导入文件</button>
         <input ref="rosterFileInput" type="file" accept=".csv,.json,.xlsx,.xls" hidden @change="importRosterFile" />
-        <button type="button" class="subtle-button" @click="exportRoster('csv')">导出 CSV</button>
-        <button type="button" class="subtle-button" @click="exportRoster('json')">导出 JSON</button>
+        <button type="button" class="subtle-button" @click="exportRoster('csv')"><FluentIcon icon="arrow-download-20-regular" :width="14" /> 导出 CSV</button>
+        <button type="button" class="subtle-button" @click="exportRoster('json')"><FluentIcon icon="arrow-download-20-regular" :width="14" /> 导出 JSON</button>
       </div>
     </div>
     <small v-if="memberMessage" class="inline-status">{{ memberMessage }}</small>
@@ -328,7 +328,7 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
         <select v-model="memberForm.gender">
           <option v-for="item in genderOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
         </select>
-        <button type="button" class="subtle-button" @click="addMember">添加</button>
+        <button type="button" class="subtle-button" @click="addMember"><FluentIcon icon="add-20-regular" :width="14" /> 添加</button>
       </div>
     </div>
     <div class="managed-list">
@@ -339,7 +339,7 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
         </span>
         <span class="duty-member-actions">
           <button type="button" class="toggle-chip" @click="cycleGender(member)">{{ genderLabel(member.gender) }}</button>
-          <button type="button" class="icon-text-button" @click="contentStore.removeMember(member)">删除</button>
+          <button type="button" class="icon-text-button icon-only" title="删除成员" aria-label="删除成员" @click="contentStore.removeMember(member)"><FluentIcon icon="delete-20-regular" :width="14" /></button>
         </span>
       </div>
       <p v-if="!duty.members.length" class="empty-inline">还没有成员，请导入名单文件或手动添加。</p>
@@ -362,8 +362,8 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
             <small>{{ roster.chores.length }} 项任务 · {{ roster.memberIds?.length ? `${roster.memberIds.length} 人参与` : '全体成员' }} · 已轮换 {{ rosterCount(roster) }} 次 · {{ roster.enabled === false ? '已停用' : '启用中' }}</small>
           </span>
           <span class="duty-member-actions">
-            <button type="button" class="icon-text-button" @click="toggleRoster(roster)">{{ isRosterExpanded(roster) ? '收起' : '展开' }}</button>
-            <button type="button" class="icon-text-button danger-button" @click="contentStore.removeRoster(roster)">删除</button>
+            <button type="button" class="icon-text-button icon-only" :title="isRosterExpanded(roster) ? '收起' : '展开'" :aria-label="isRosterExpanded(roster) ? '收起' : '展开'" @click="toggleRoster(roster)"><FluentIcon :icon="isRosterExpanded(roster) ? 'chevron-up-20-regular' : 'chevron-down-20-regular'" :width="15" /></button>
+            <button type="button" class="icon-text-button icon-only danger-button" title="删除名单" aria-label="删除名单" @click="contentStore.removeRoster(roster)"><FluentIcon icon="delete-20-regular" :width="14" /></button>
           </span>
         </div>
         <div v-if="isRosterExpanded(roster)" class="duty-roster-body">
@@ -409,7 +409,7 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
                   <select class="duty-mini-select" :value="chore.genderRule" @change="contentStore.updateChore(chore, { genderRule: $event.target.value })">
                     <option v-for="item in choreGenderOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
                   </select>
-                  <button type="button" class="icon-text-button" @click="contentStore.removeChore(roster, chore)">删除</button>
+                  <button type="button" class="icon-text-button icon-only" title="删除任务" aria-label="删除任务" @click="contentStore.removeChore(roster, chore)"><FluentIcon icon="delete-20-regular" :width="14" /></button>
                 </span>
               </div>
               <p v-if="!roster.chores.length" class="empty-inline">还没有任务，请在下方添加。</p>
@@ -420,7 +420,7 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
               <select v-model="choreForm.genderRule">
                 <option v-for="item in choreGenderOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
               </select>
-              <button type="button" class="subtle-button" @click="addChore(roster)">添加任务</button>
+              <button type="button" class="subtle-button" @click="addChore(roster)"><FluentIcon icon="add-20-regular" :width="14" /> 添加任务</button>
             </div>
           </div>
         </div>
@@ -434,8 +434,8 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
       <div><h3>在校日与节假日</h3><p>当天打开过应用会自动记为在校日；已过去的非在校日不参与轮换。</p></div>
       <div class="inline-form">
         <input v-model="newSchoolDay" type="date" class="duty-date-input" />
-        <button type="button" class="subtle-button" @click="addSchoolDay()">补记</button>
-        <button type="button" class="subtle-button" @click="addSchoolDay(dateAdd(localDateStr(), -1))">补记昨天</button>
+        <button type="button" class="subtle-button" @click="addSchoolDay()"><FluentIcon icon="add-20-regular" :width="14" /> 补记</button>
+        <button type="button" class="subtle-button" @click="addSchoolDay(dateAdd(localDateStr(), -1))"><FluentIcon icon="add-20-regular" :width="14" /> 补记昨天</button>
       </div>
     </div>
     <div class="duty-field duty-field-gap">
@@ -453,7 +453,7 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
       <span>节假日（不排班）</span>
       <div class="inline-form">
         <input v-model="newHoliday" type="date" class="duty-date-input" />
-        <button type="button" class="subtle-button" @click="addHoliday">添加</button>
+        <button type="button" class="subtle-button" @click="addHoliday"><FluentIcon icon="add-20-regular" :width="14" /> 添加</button>
       </div>
       <div class="category-chips duty-chip-row">
         <button v-for="day in duty.holidays" :key="day" type="button" class="category-chip active" @click="removeHoliday(day)">{{ day }} ×</button>
@@ -478,8 +478,8 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
             <em v-if="row.overridden" class="duty-flag">已手动</em>
           </span>
           <span class="duty-member-actions">
-            <button type="button" class="icon-text-button" :class="{ 'duty-active-button': calibratingDate === row.date }" @click="toggleCalibrate(row)">{{ calibratingDate === row.date ? '收起定次' : '定次' }}</button>
-            <button type="button" class="icon-text-button" @click="editingDate === row.date ? closeEditor() : openEditor(row)">{{ editingDate === row.date ? '收起' : '改' }}</button>
+            <button type="button" class="icon-text-button" :class="{ 'duty-active-button': calibratingDate === row.date }" @click="toggleCalibrate(row)"><FluentIcon icon="calendar-20-regular" :width="14" /> {{ calibratingDate === row.date ? '收起定次' : '定次' }}</button>
+            <button type="button" class="icon-text-button" @click="editingDate === row.date ? closeEditor() : openEditor(row)"><FluentIcon :icon="editingDate === row.date ? 'chevron-up-20-regular' : 'edit-20-regular'" :width="14" /> {{ editingDate === row.date ? '收起' : '改' }}</button>
           </span>
         </div>
         <div class="duty-preview-lines">
@@ -491,16 +491,16 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
         </div>
         <div v-if="editingDate === row.date" class="duty-editor">
           <div v-for="line in editLines" :key="line.choreId" class="duty-editor-line">
-            <strong>{{ line.name }}<em v-if="line.extra" class="duty-flag">临时</em><button v-if="line.extra" type="button" class="icon-text-button" @click="removeEditLine(line)">删除临时</button></strong>
+            <strong>{{ line.name }}<em v-if="line.extra" class="duty-flag">临时</em><button v-if="line.extra" type="button" class="icon-text-button icon-only" title="删除临时任务" aria-label="删除临时任务" @click="removeEditLine(line)"><FluentIcon icon="delete-20-regular" :width="13" /></button></strong>
             <div class="category-chips duty-chip-row">
               <button v-for="member in duty.members" :key="member.id" type="button" class="category-chip" :class="{ active: line.memberIds.includes(member.id) }" @click="toggleEditMember(line, member.id)">{{ member.name }}</button>
             </div>
           </div>
           <div class="inline-form duty-extra-form">
             <input v-model="extraName" placeholder="临时任务名称（如 大扫除加项）" @keydown.enter.prevent="addExtraLine" />
-            <button type="button" class="subtle-button" @click="addExtraLine">加一项</button>
-            <button type="button" class="subtle-button" @click="restoreDay">复原为自动</button>
-            <button type="button" class="subtle-button" @click="closeEditor">完成</button>
+            <button type="button" class="subtle-button" @click="addExtraLine"><FluentIcon icon="add-20-regular" :width="14" /> 加一项</button>
+            <button type="button" class="subtle-button" @click="restoreDay"><FluentIcon icon="arrow-reset-20-regular" :width="14" /> 复原为自动</button>
+            <button type="button" class="subtle-button" @click="closeEditor"><FluentIcon icon="checkmark-20-regular" :width="14" /> 完成</button>
           </div>
         </div>
         <div v-if="calibratingDate === row.date" class="duty-editor duty-calibrate">
@@ -510,8 +510,8 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
             <span v-for="line in candidate.lines" :key="line.choreId">{{ line.name }}：{{ lineNames(line) }}</span>
           </div>
           <div class="inline-form">
-            <button v-if="row.anchored" type="button" class="subtle-button" @click="clearAnchor(row.date)">清除定次（恢复自动）</button>
-            <button type="button" class="subtle-button" @click="calibratingDate = ''">完成</button>
+            <button v-if="row.anchored" type="button" class="subtle-button" @click="clearAnchor(row.date)"><FluentIcon icon="arrow-reset-20-regular" :width="14" /> 清除定次（恢复自动）</button>
+            <button type="button" class="subtle-button" @click="calibratingDate = ''"><FluentIcon icon="checkmark-20-regular" :width="14" /> 完成</button>
           </div>
         </div>
       </div>

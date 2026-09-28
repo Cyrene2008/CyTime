@@ -104,10 +104,10 @@ function adjustFont(amount) {
       </p>
     </div>
     <footer class="blackboard-footer">
-      <button type="button" class="micro-button" :disabled="!hasPrev" @click="step(-1)">‹ 上一天</button>
+      <button type="button" class="micro-button icon-only" title="上一天" aria-label="上一天" :disabled="!hasPrev" @click="step(-1)"><FluentIcon icon="chevron-left-20-regular" :width="14" /></button>
       <span class="blackboard-date">{{ dateLabel }}</span>
       <button type="button" class="micro-button" :disabled="atToday" @click="backToday">回到今天</button>
-      <button type="button" class="micro-button" :disabled="!hasNext" @click="step(1)">下一天 ›</button>
+      <button type="button" class="micro-button icon-only" title="下一天" aria-label="下一天" :disabled="!hasNext" @click="step(1)"><FluentIcon icon="chevron-right-20-regular" :width="14" /></button>
     </footer>
   </aside>
 </template>
