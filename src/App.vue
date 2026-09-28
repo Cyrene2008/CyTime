@@ -79,6 +79,12 @@ const activeTaskCount = computed(() => timeStore.activeCountdowns.length + timeS
 const sideLayoutQuery = typeof window === 'undefined' ? null : window.matchMedia('(min-width: 621px)')
 const homeworkVisible = computed(() => settingsStore.settings.showHomework && !settingsStore.examModeActive && !(desktopAvailable.value && ['normal', 'mini'].includes(desktopWindowMode.value)))
 const taskSide = computed(() => homeworkVisible.value && settingsStore.settings.homeworkPosition === 'right' ? 'left' : 'right')
+const wideLayout = ref(sideLayoutQuery?.matches ?? true)
+const blackboardActive = computed(() => route.path === '/time' && !isSettings.value && settingsStore.settings.showBlackboard && !settingsStore.examModeActive && !(desktopAvailable.value && ['normal', 'mini'].includes(desktopWindowMode.value)) && (wideLayout.value || !settingsStore.settings.showHomework))
+
+function syncWideLayout(event) {
+  wideLayout.value = event.matches
+}
 
 function updateTaskOverflow() {
   const element = taskDock.value
@@ -516,6 +522,7 @@ onMounted(async () => {
   safeAreaObserver = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(syncContentSafeTop)
   window.addEventListener('resize', syncContentSafeTop)
   sideLayoutQuery?.addEventListener('change', updateTaskOverflow)
+  sideLayoutQuery?.addEventListener('change', syncWideLayout)
   stopSafeAreaWatch = watch([isSettings, () => settingsStore.examModeActive, () => settingsStore.settings.statusDockScale, () => settingsStore.settings.statusDockOffsetY, () => settingsStore.settings.uiScale], async () => {
     await nextTick()
     observeSafeAreas()
@@ -545,6 +552,7 @@ onUnmounted(() => {
   window.removeEventListener('focus', syncAfterVisibilityChange)
   window.removeEventListener('resize', syncContentSafeTop)
   sideLayoutQuery?.removeEventListener('change', updateTaskOverflow)
+  sideLayoutQuery?.removeEventListener('change', syncWideLayout)
   taskResizeObserver?.disconnect()
   safeAreaObserver?.disconnect()
   stopTaskWatch?.()
@@ -587,7 +595,7 @@ onUnmounted(() => {
         <a class="app-signature" href="https://github.com/Cyrene2008/CyTime" target="_blank" rel="noreferrer">v{{ appVersion }}<span v-if="buildId"> (build {{ buildId }})</span> by Cyrene2008</a>
         <a v-if="FILING_NAME" class="app-filing" :href="FILING_URL" target="_blank" rel="noreferrer">{{ FILING_NAME }}</a>
       </div>
-      <div v-if="activeTaskCount && !settingsStore.examModeActive" ref="taskDock" class="task-docks" :class="['is-side', `task-docks-${taskSide}`, { 'is-marquee': taskOverflow }]"><div class="task-docks-track"><template v-for="copy in taskOverflow ? 2 : 1" :key="copy"><RouterLink v-for="task in timeStore.activeCountdowns" :key="`${copy}-${task.id}`" to="/countdown" class="task-widget task-widget-countdown" @click="timeStore.selectCountdown(task)"><span class="task-dot pink"></span><span>{{ task.label }}</span><strong>{{ formatDuration(countdownRemaining(task)) }}</strong></RouterLink><RouterLink v-for="task in timeStore.activeTimers" :key="`${copy}-${task.id}-timer`" to="/timer" class="task-widget task-widget-timer" @click="timeStore.selectTimer(task)"><span class="task-dot green"></span><span>{{ task.label }}</span><strong>{{ formatDuration(timeStore.timerElapsed(task)) }}</strong></RouterLink></template></div></div>
+      <div v-if="activeTaskCount && !settingsStore.examModeActive && !blackboardActive" ref="taskDock" class="task-docks" :class="['is-side', `task-docks-${taskSide}`, { 'is-marquee': taskOverflow }]"><div class="task-docks-track"><template v-for="copy in taskOverflow ? 2 : 1" :key="copy"><RouterLink v-for="task in timeStore.activeCountdowns" :key="`${copy}-${task.id}`" to="/countdown" class="task-widget task-widget-countdown" @click="timeStore.selectCountdown(task)"><span class="task-dot pink"></span><span>{{ task.label }}</span><strong>{{ formatDuration(countdownRemaining(task)) }}</strong></RouterLink><RouterLink v-for="task in timeStore.activeTimers" :key="`${copy}-${task.id}-timer`" to="/timer" class="task-widget task-widget-timer" @click="timeStore.selectTimer(task)"><span class="task-dot green"></span><span>{{ task.label }}</span><strong>{{ formatDuration(timeStore.timerElapsed(task)) }}</strong></RouterLink></template></div></div>
       <Transition name="notice"><div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div></Transition>
       <Transition name="pure-prompt"><div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净考试模式提示"><div class="pure-prompt-card"><h2>是否进入纯净模式(考试模式)</h2><p>该模式下仅显示当前时间，隐藏其他内容。可以点击界面上的退出纯净/考试模式按钮退出，也可点击进入纯净/考试模式按钮进入。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">不了 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div></Transition>
     </template>

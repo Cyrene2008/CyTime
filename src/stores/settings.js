@@ -20,6 +20,8 @@ export const defaultSettings = {
   showImportantDays: true,
   showDayProgress: true,
   showHomework: false,
+  showBlackboard: true,
+  blackboardPosition: 'auto',
   showSchedule: true,
   homeworkPosition: 'left',
   homeworkFontSize: 13,
