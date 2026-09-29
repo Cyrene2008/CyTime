@@ -30,6 +30,7 @@ const defaultContent = {
   schedule: [],
   homework: [],
   homeworkHistory: [],
+  notepad: '',
   duty: defaultDuty()
 }
 
@@ -57,6 +58,7 @@ function readContent() {
       schedule: Array.isArray(saved.schedule) ? saved.schedule : [],
       homework: Array.isArray(saved.homework) ? saved.homework : [],
       homeworkHistory: Array.isArray(saved.homeworkHistory) ? saved.homeworkHistory : [],
+      notepad: typeof saved.notepad === 'string' ? saved.notepad : '',
       duty: normalizeDuty(saved.duty)
     }
   } catch {
@@ -324,6 +326,10 @@ export const useContentStore = defineStore('content', () => {
     if (!Object.keys(byRoster).length) delete content.duty.anchors[roster.id]
     persist()
   }
+  function updateNotepad(text) {
+    content.notepad = String(text || '')
+    persist()
+  }
   function reanchorRoster(roster) {
     const count = countOccurrences(content.duty, roster, localDateStr())
     roster.offset = 1 - count
@@ -331,5 +337,5 @@ export const useContentStore = defineStore('content', () => {
   }
 
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor }
+  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, updateNotepad }
 })

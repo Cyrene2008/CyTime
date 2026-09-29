@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, ref } from 'vue'
+import { computed, inject, nextTick, onUnmounted, ref } from 'vue'
 import { useTimeStore } from '../stores/time'
 import { useSettingsStore } from '../stores/settings'
 import { useContentStore } from '../stores/content'
@@ -112,6 +112,34 @@ function toggleEditorMember(memberId) {
 function clearEditorLine() {
   writeEditorLine(target => { target.memberIds = [] })
 }
+
+const notepad = computed(() => contentStore.content.notepad || '')
+const notepadEditing = ref(false)
+const notepadDraft = ref('')
+const notepadRef = ref(null)
+let notepadTimer = 0
+function openNotepad() {
+  notepadDraft.value = notepad.value
+  notepadEditing.value = true
+  nextTick(() => notepadRef.value?.focus())
+}
+function saveNotepad() {
+  window.clearTimeout(notepadTimer)
+  notepadTimer = 0
+  contentStore.updateNotepad(notepadDraft.value)
+  notepadEditing.value = false
+}
+function onNotepadInput() {
+  window.clearTimeout(notepadTimer)
+  notepadTimer = window.setTimeout(() => contentStore.updateNotepad(notepadDraft.value), 500)
+}
+function clearNotepad() {
+  window.clearTimeout(notepadTimer)
+  notepadTimer = 0
+  notepadDraft.value = ''
+  contentStore.updateNotepad('')
+}
+onUnmounted(() => window.clearTimeout(notepadTimer))
 </script>
 
 <template>
@@ -154,6 +182,14 @@ function clearEditorLine() {
         <template v-if="hasRoster">今日无值日安排</template>
         <template v-else>尚无值日名单<small>在 设置 · 值日管理 中导入或新建</small></template>
       </p>
+      <section class="blackboard-notepad">
+        <div class="blackboard-notepad-head">
+          <span>记事板</span>
+          <button v-if="notepad && !notepadEditing" type="button" class="micro-button icon-only" title="清空记事板" aria-label="清空记事板" @click="clearNotepad"><FluentIcon icon="delete-20-regular" :width="12" /></button>
+        </div>
+        <textarea v-if="notepadEditing" ref="notepadRef" v-model="notepadDraft" class="blackboard-notepad-input" rows="3" placeholder="写点什么…（失焦自动保存）" @input="onNotepadInput" @blur="saveNotepad" @keydown.esc="saveNotepad"></textarea>
+        <p v-else class="blackboard-notepad-text" :class="{ empty: !notepad }" @click="openNotepad">{{ notepad || '点此记点什么…' }}</p>
+      </section>
     </div>
     <footer class="blackboard-footer">
       <button type="button" class="micro-button icon-only" title="上一天" aria-label="上一天" :disabled="!hasPrev" @click="step(-1)"><FluentIcon icon="chevron-left-20-regular" :width="14" /></button>
