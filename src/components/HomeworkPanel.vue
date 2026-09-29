@@ -21,7 +21,7 @@ const historyItems = computed(() => [...contentStore.content.homeworkHistory].re
 const historyOpen = ref(false)
 const editorOpen = ref(false)
 const editingId = ref(null)
-const subjectChoice = ref('数学')
+const subjectChoice = ref(subjectPresets[0])
 const customSubject = ref('')
 const content = ref('')
 const startDate = ref('')
@@ -317,7 +317,7 @@ function scheduleMeasure() {
 function openEditor(item = null) {
   clearFloatIdle()
   editingId.value = item?.id || null
-  const subject = item?.subject || '数学'
+  const subject = item?.subject || subjectPresets[0]
   if (subjectPresets.includes(subject)) {
     subjectChoice.value = subject
     customSubject.value = ''

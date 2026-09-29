@@ -322,12 +322,10 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
     <small v-if="memberMessage" class="inline-status">{{ memberMessage }}</small>
     <div class="card-toolbar duty-card-gap">
       <div><h3>手动维护</h3><p>现有 {{ duty.members.length }} 人；点击姓名可直接修改，点性别标签切换。</p></div>
-      <div class="inline-form">
+      <div class="inline-form duty-member-form">
         <input v-model="memberForm.name" placeholder="姓名" @keydown.enter.prevent="addMember" />
         <input v-model="memberForm.enName" placeholder="英文名（选填）" @keydown.enter.prevent="addMember" />
-        <select v-model="memberForm.gender">
-          <option v-for="item in genderOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
-        </select>
+        <FluentSelect v-model="memberForm.gender" :options="genderOptions" aria-label="性别" />
         <button type="button" class="subtle-button" @click="addMember"><FluentIcon icon="add-20-regular" :width="14" /> 添加</button>
       </div>
     </div>
@@ -408,9 +406,7 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
                 </span>
                 <span class="duty-chore-actions">
                   <label class="duty-mini-label">人数<input type="number" min="1" max="20" :value="chore.slots" @change="contentStore.updateChore(chore, { slots: Math.max(1, Number($event.target.value) || 1) })" /></label>
-                  <select class="duty-mini-select" :value="chore.genderRule" @change="contentStore.updateChore(chore, { genderRule: $event.target.value })">
-                    <option v-for="item in choreGenderOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
-                  </select>
+                  <FluentSelect :model-value="chore.genderRule" :options="choreGenderOptions" aria-label="性别限制" @update:model-value="contentStore.updateChore(chore, { genderRule: $event })" />
                   <button type="button" class="icon-text-button icon-only" title="删除任务" aria-label="删除任务" @click="contentStore.removeChore(roster, chore)"><FluentIcon icon="delete-20-regular" :width="14" /></button>
                 </span>
               </div>
@@ -419,9 +415,7 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
             <div class="inline-form duty-chore-add">
               <input v-model="choreForm.name" placeholder="任务名（如 拖地）" @keydown.enter.prevent="addChore(roster)" />
               <input v-model.number="choreForm.slots" type="number" min="1" max="20" title="人数" />
-              <select v-model="choreForm.genderRule">
-                <option v-for="item in choreGenderOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
-              </select>
+              <FluentSelect v-model="choreForm.genderRule" :options="choreGenderOptions" aria-label="性别限制" />
               <button type="button" class="subtle-button" @click="addChore(roster)"><FluentIcon icon="add-20-regular" :width="14" /> 添加任务</button>
             </div>
           </div>
@@ -434,8 +428,8 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
   <section v-else-if="tab === 'preview'" class="setting-card">
     <div class="card-toolbar">
       <div><h3>在校日与节假日</h3><p>当天打开过应用会自动记为在校日；已过去的非在校日不参与轮换。</p></div>
-      <div class="inline-form">
-        <input v-model="newSchoolDay" type="date" class="duty-date-input" />
+      <div class="inline-form duty-date-row">
+        <FluentDatePicker v-model="newSchoolDay" placeholder="日期" />
         <button type="button" class="subtle-button" @click="addSchoolDay()"><FluentIcon icon="add-20-regular" :width="14" /> 补记</button>
         <button type="button" class="subtle-button" @click="addSchoolDay(dateAdd(localDateStr(), -1))"><FluentIcon icon="add-20-regular" :width="14" /> 补记昨天</button>
       </div>
@@ -453,8 +447,8 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
     </div>
     <div class="duty-field duty-field-gap">
       <span>节假日（不排班）</span>
-      <div class="inline-form">
-        <input v-model="newHoliday" type="date" class="duty-date-input" />
+      <div class="inline-form duty-date-row">
+        <FluentDatePicker v-model="newHoliday" placeholder="日期" />
         <button type="button" class="subtle-button" @click="addHoliday"><FluentIcon icon="add-20-regular" :width="14" /> 添加</button>
       </div>
       <div class="category-chips duty-chip-row">

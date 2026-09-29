@@ -583,3 +583,10 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .blackboard-notepad-text:hover { border-color: color-mix(in srgb, var(--accent), transparent 50%); }
 .blackboard-notepad-text.empty { color: var(--text-muted); }
 .blackboard-notepad-input { width: 100%; min-height: 64px; max-height: 150px; resize: vertical; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 6px; outline: none; color: var(--text-primary); background: color-mix(in srgb, var(--bg-card-solid), transparent 25%); font-family: inherit; font-size: calc(12px * var(--blackboard-font-scale, 1)); line-height: 1.5; }
+
+/* 值日管理内嵌组件库控件宽度与弹层缩放 */
+.duty-member-form .fluent-select-wrapper { width: 96px; }
+.duty-chore-actions .fluent-select-wrapper, .duty-chore-add .fluent-select-wrapper { width: 112px; }
+.duty-member-form .fluent-select-wrapper .fluent-select, .duty-chore-actions .fluent-select-wrapper .fluent-select, .duty-chore-add .fluent-select-wrapper .fluent-select { min-width: 0; width: 100%; }
+.duty-date-row .fluent-calendar-date-picker { width: 150px; }
+.fluent-select-dropdown, .calendar-dropdown, .time-picker-dropdown, .color-picker-dropdown, .combo-box-dropdown, .auto-suggest-dropdown { zoom: var(--ui-scale, 1); }
