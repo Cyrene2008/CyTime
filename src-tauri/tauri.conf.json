@@ -37,7 +37,7 @@
         "decorations": false,
         "shadow": true,
         "visible": false,
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --disk-cache-size=1"
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion,WebContentsOcclusion,IntensiveWakeUpThrottling --autoplay-policy=no-user-gesture-required --disk-cache-size=1 --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling"
       }
     ],
     "security": {

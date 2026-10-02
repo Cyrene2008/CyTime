@@ -451,6 +451,21 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![application_platform, desktop_startup_args, desktop_pending_uris, storage_read_all, storage_write, desktop_write_file, desktop_check_update, desktop_download_update, desktop_set_uri_registration, desktop_window_mode, desktop_set_autostart, desktop_fetch_json, desktop_fetch_network_time, desktop_window_action, desktop_open_homework])
         .setup(move |app| {
+            #[cfg(target_os = "windows")]
+            {
+                use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetCurrentThread, SetPriorityClass, SetThreadPriority, SetProcessInformation, ProcessPowerThrottling, PROCESS_POWER_THROTTLING_STATE, PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, ABOVE_NORMAL_PRIORITY_CLASS, THREAD_PRIORITY_ABOVE_NORMAL};
+                unsafe {
+                    SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+                    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+                    let throttling = PROCESS_POWER_THROTTLING_STATE {
+                        Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+                        ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+                        StateMask: 0,
+                    };
+                    SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &throttling as *const _ as *const std::ffi::c_void, std::mem::size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32);
+                }
+            }
+
             if let Some(listener) = activation_listener {
                 let activation_app = app.handle().clone();
                 thread::spawn(move || loop {
