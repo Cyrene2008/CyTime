@@ -10,6 +10,7 @@ import { useDigitBox } from '../composables/useDigitBox'
 import { useAlmanac } from '../composables/useAlmanac'
 import { useSmoothShift } from '../composables/useSmoothShift'
 import HomeworkPanel from '../components/HomeworkPanel.vue'
+import BlackboardPanel from '../components/BlackboardPanel.vue'
 
 const timeStore = useTimeStore()
 const settingsStore = useSettingsStore()
@@ -66,6 +67,7 @@ const quoteAttribution = computed(() => {
   <section ref="viewRef" class="clock-view" @click="handleStageClick">
     <div class="clock-aura aura-one"></div><div class="clock-aura aura-two"></div>
     <HomeworkPanel v-if="settingsStore.settings.showHomework && !settingsStore.examModeActive" />
+    <BlackboardPanel v-if="settingsStore.settings.showBlackboard && !settingsStore.examModeActive" />
     <div class="clock-eyebrow">昔光涟涟，时不我待</div>
     <time ref="clockRef" class="hero-clock"><template v-for="(part, index) in clockParts" :key="index"><span v-for="(digit, digitIndex) in part.split('')" :key="digitIndex" class="hero-digit">{{ digit }}</span><b v-if="index < clockParts.length - 1">:</b></template></time>
     <div v-if="!settingsStore.examModeActive && (settingsStore.settings.showDate || ((settingsStore.settings.showLunar || settingsStore.settings.showAlmanac) && almanac))" class="hero-date-block">

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import SettingsView from './views/SettingsView.vue'
 import { useTimeStore } from './stores/time'
@@ -26,6 +26,7 @@ const weatherStore = useWeatherStore()
 const quotesStore = useQuotesStore()
 const controlsHidden = ref(false)
 const settingsOpen = ref(false)
+const settingsPane = ref('')
 const appVersion = __APP_VERSION__
 const buildId = __BUILD_ID__
 const desktopAvailable = ref(false)
@@ -68,8 +69,10 @@ let stopViewPaddingWatch
 let stopDesktopBridge
 let timeSyncTimer
 let stopRightClick
+let idleReturnTimer
+let schoolDayTimer
 const navItems = [
-  { path: '/clock', label: '时钟', icon: 'clock-20-regular' },
+  { path: '/time', label: '时钟', icon: 'clock-20-regular' },
   { path: '/countdown', label: '倒计时', icon: 'arrow-clockwise-20-regular' },
   { path: '/timer', label: '计时器', icon: 'timer-20-regular' }
 ]
@@ -77,6 +80,12 @@ const activeTaskCount = computed(() => timeStore.activeCountdowns.length + timeS
 const sideLayoutQuery = typeof window === 'undefined' ? null : window.matchMedia('(min-width: 621px)')
 const homeworkVisible = computed(() => settingsStore.settings.showHomework && !settingsStore.examModeActive && !(desktopAvailable.value && ['normal', 'mini'].includes(desktopWindowMode.value)))
 const taskSide = computed(() => homeworkVisible.value && settingsStore.settings.homeworkPosition === 'right' ? 'left' : 'right')
+const wideLayout = ref(sideLayoutQuery?.matches ?? true)
+const blackboardActive = computed(() => route.path === '/time' && !isSettings.value && settingsStore.settings.showBlackboard && !settingsStore.examModeActive && !(desktopAvailable.value && ['normal', 'mini'].includes(desktopWindowMode.value)) && (wideLayout.value || !settingsStore.settings.showHomework))
+
+function syncWideLayout(event) {
+  wideLayout.value = event.matches
+}
 
 function updateTaskOverflow() {
   const element = taskDock.value
@@ -118,6 +127,10 @@ function syncContentSafeTop() {
 function updateViewPadding() {
   const shell = shellRef.value
   if (!shell) return
+  if (settingsStore.examModeActive) {
+    for (const view of shell.querySelectorAll('.clock-view, .focus-view')) view.style.paddingTop = ''
+    return
+  }
   const shellRect = shell.getBoundingClientRect()
   const scale = shell.offsetWidth ? shellRect.width / shell.offsetWidth : 1
   const dockBottom = statusDockRef.value ? (statusDockRef.value.getBoundingClientRect().bottom - shellRect.top) / scale : 0
@@ -205,17 +218,27 @@ function maximizeWindow() {
   } else { desktopWindowAction('maximize'); desktopWindowMode.value = 'max' }
 }
 
-function openSettings() {
+function openSettings(pane = '') {
+  settingsPane.value = typeof pane === 'string' ? pane : ''
   settingsOpen.value = true
-  window.__cytimeShowControls?.()
 }
+provide('cytimeOpenSettings', openSettings)
 
 function closeSettings() {
   settingsOpen.value = false
 }
 
+function scheduleIdleReturn() {
+  window.clearTimeout(idleReturnTimer)
+  if (!settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value) return
+  idleReturnTimer = window.setTimeout(() => {
+    if (route.path !== '/time') router.push('/time')
+  }, 30000)
+}
+
 function handleDesktopUri(rawUri) {
   if (!settingsStore.settings.uriRegistration) return
+  scheduleIdleReturn()
   try {
     const uri = new URL(String(rawUri))
 
@@ -236,7 +259,7 @@ function handleDesktopUri(rawUri) {
     }
     if (isDesktop()) desktopWindowAction('show')
     const page = uri.hostname === 'page' ? uri.pathname.replace(/^\//, '') : ''
-    if (page === 'time') router.push('/clock')
+    if (page === 'time' || page === 'clock') router.push('/time')
     else if (['countdown', 'timer'].includes(page)) router.push(`/${page}`)
     else if (uri.hostname === 'countdown') {
       const targetInput = uri.searchParams.get('target')
@@ -438,6 +461,7 @@ watch(() => [settingsStore.settings.timeSyncEnabled, settingsStore.settings.time
   }
 })
 watch(isSettings, open => { if (!open) window.setTimeout(schedulePurePrompt, 180) })
+watch([() => settingsStore.settings.idleReturnTime, desktopMini], scheduleIdleReturn)
 
 onMounted(async () => {
   desktopAvailable.value = await probeDesktop()
@@ -449,6 +473,8 @@ onMounted(async () => {
   settingsStore.setExamMode(false)
   if (settingsStore.settings.showWeather) weatherStore.refresh(settingsStore.settings.weatherCityNum)
   autoLocateWeather()
+  contentStore.recordSchoolDay()
+  schoolDayTimer = window.setInterval(() => contentStore.recordSchoolDay(), 60000)
   dayRotationTimer = window.setInterval(() => { if (upcomingDays.value.length > 1) dayRotation.value = (dayRotation.value + 1) % upcomingDays.value.length }, 15000)
   weatherTimer = window.setInterval(() => { if (settingsStore.settings.showWeather) weatherStore.refresh(settingsStore.settings.weatherCityNum, true) }, 30 * 60 * 1000)
   showControlsHandler = () => {
@@ -456,6 +482,7 @@ onMounted(async () => {
     controlsHidden.value = false
     window.clearTimeout(controlsTimer)
     controlsTimer = window.setTimeout(() => { controlsHidden.value = true }, 10000)
+    scheduleIdleReturn()
   }
   window.addEventListener('pointermove', showControlsHandler, { passive: true })
   window.addEventListener('pointerdown', showControlsHandler, { passive: true })
@@ -467,6 +494,7 @@ onMounted(async () => {
   syncAfterVisibilityChange = () => {
     syncWakeLock()
     timeStore.sync()
+    contentStore.recordSchoolDay()
   }
   document.addEventListener('visibilitychange', syncAfterVisibilityChange)
   window.addEventListener('focus', syncAfterVisibilityChange)
@@ -500,6 +528,7 @@ onMounted(async () => {
   safeAreaObserver = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(syncContentSafeTop)
   window.addEventListener('resize', syncContentSafeTop)
   sideLayoutQuery?.addEventListener('change', updateTaskOverflow)
+  sideLayoutQuery?.addEventListener('change', syncWideLayout)
   stopSafeAreaWatch = watch([isSettings, () => settingsStore.examModeActive, () => settingsStore.settings.statusDockScale, () => settingsStore.settings.statusDockOffsetY, () => settingsStore.settings.uiScale], async () => {
     await nextTick()
     observeSafeAreas()
@@ -519,6 +548,7 @@ onUnmounted(() => {
   window.clearInterval(weatherTimer)
   window.clearInterval(timeSyncTimer)
   window.clearInterval(dayRotationTimer)
+  window.clearInterval(schoolDayTimer)
   window.clearTimeout(controlsTimer)
   if (window.__cytimeCountdownHandlers === countdownHandlers) {
     countdownHandlers.stop()
@@ -528,6 +558,7 @@ onUnmounted(() => {
   window.removeEventListener('focus', syncAfterVisibilityChange)
   window.removeEventListener('resize', syncContentSafeTop)
   sideLayoutQuery?.removeEventListener('change', updateTaskOverflow)
+  sideLayoutQuery?.removeEventListener('change', syncWideLayout)
   taskResizeObserver?.disconnect()
   safeAreaObserver?.disconnect()
   stopTaskWatch?.()
@@ -535,6 +566,7 @@ onUnmounted(() => {
   stopViewPaddingWatch?.()
   stopDesktopBridge?.()
   window.clearTimeout(noticeTimer)
+  window.clearTimeout(idleReturnTimer)
   closePurePrompt()
   if (showControlsHandler) {
     window.removeEventListener('pointermove', showControlsHandler)
@@ -562,18 +594,18 @@ onUnmounted(() => {
     <main class="clock-stage" :class="{ 'is-settings-background': isSettings }"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><component :is="Component" /></Transition></RouterView></main>
     <template v-if="!isSettings">
       <footer class="clock-footer">
-        <button type="button" class="footer-action footer-settings" aria-label="设置" @click="openSettings"><FluentIcon icon="settings-20-regular" :width="19" /></button>
+        <button type="button" class="footer-action footer-settings" aria-label="设置" @click="openSettings()"><FluentIcon icon="settings-20-regular" :width="19" /></button>
         <div class="footer-center-actions"><button type="button" class="footer-action" :aria-label="fullscreenActive ? '退出全屏' : '全屏'" @click="toggleFullscreen"><FluentIcon :icon="fullscreenActive ? 'full-screen-minimize-20-regular' : 'full-screen-maximize-20-regular'" :width="19" /><span>{{ fullscreenActive ? '退出全屏' : '全屏' }}</span></button><button type="button" class="footer-action" :aria-label="settingsStore.examModeActive ? '退出纯净模式' : '纯净/考试模式'" @click="settingsStore.examModeActive ? exitExamMode() : schedulePurePrompt()"><FluentIcon :icon="settingsStore.examModeActive ? 'eye-20-filled' : 'eye-off-20-regular'" :width="19" /><span>{{ settingsStore.examModeActive ? '退出纯净' : '纯净模式' }}</span></button></div>
       </footer>
       <div class="app-meta">
         <a class="app-signature" href="https://github.com/Cyrene2008/CyTime" target="_blank" rel="noreferrer">v{{ appVersion }}<span v-if="buildId"> (build {{ buildId }})</span> by Cyrene2008</a>
         <a v-if="FILING_NAME" class="app-filing" :href="FILING_URL" target="_blank" rel="noreferrer">{{ FILING_NAME }}</a>
       </div>
-      <div v-if="activeTaskCount && !settingsStore.examModeActive" ref="taskDock" class="task-docks" :class="['is-side', `task-docks-${taskSide}`, { 'is-marquee': taskOverflow }]"><div class="task-docks-track"><template v-for="copy in taskOverflow ? 2 : 1" :key="copy"><RouterLink v-for="task in timeStore.activeCountdowns" :key="`${copy}-${task.id}`" to="/countdown" class="task-widget task-widget-countdown" @click="timeStore.selectCountdown(task)"><span class="task-dot pink"></span><span>{{ task.label }}</span><strong>{{ formatDuration(countdownRemaining(task)) }}</strong></RouterLink><RouterLink v-for="task in timeStore.activeTimers" :key="`${copy}-${task.id}-timer`" to="/timer" class="task-widget task-widget-timer" @click="timeStore.selectTimer(task)"><span class="task-dot green"></span><span>{{ task.label }}</span><strong>{{ formatDuration(timeStore.timerElapsed(task)) }}</strong></RouterLink></template></div></div>
-      <div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div>
-      <div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净考试模式提示"><div class="pure-prompt-card"><h2>是否进入纯净模式(考试模式)</h2><p>该模式下仅显示当前时间，隐藏其他内容。可以点击界面上的退出纯净/考试模式按钮退出，也可点击进入纯净/考试模式按钮进入。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">不了 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div>
+      <div v-if="activeTaskCount && !settingsStore.examModeActive && !blackboardActive" ref="taskDock" class="task-docks" :class="['is-side', `task-docks-${taskSide}`, { 'is-marquee': taskOverflow }]"><div class="task-docks-track"><template v-for="copy in taskOverflow ? 2 : 1" :key="copy"><RouterLink v-for="task in timeStore.activeCountdowns" :key="`${copy}-${task.id}`" to="/countdown" class="task-widget task-widget-countdown" @click="timeStore.selectCountdown(task)"><span class="task-dot pink"></span><span>{{ task.label }}</span><strong>{{ formatDuration(countdownRemaining(task)) }}</strong></RouterLink><RouterLink v-for="task in timeStore.activeTimers" :key="`${copy}-${task.id}-timer`" to="/timer" class="task-widget task-widget-timer" @click="timeStore.selectTimer(task)"><span class="task-dot green"></span><span>{{ task.label }}</span><strong>{{ formatDuration(timeStore.timerElapsed(task)) }}</strong></RouterLink></template></div></div>
+      <Transition name="notice"><div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div></Transition>
+      <Transition name="pure-prompt"><div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净考试模式提示"><div class="pure-prompt-card"><h2>是否进入纯净模式(考试模式)</h2><p>该模式下仅显示当前时间，隐藏其他内容。可以点击界面上的退出纯净/考试模式按钮退出，也可点击进入纯净/考试模式按钮进入。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">不了 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div></Transition>
     </template>
-    <Transition name="settings-overlay"><div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" @close="closeSettings" /></div></Transition>
+    <Transition name="settings-overlay"><div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" :initial-pane="settingsPane" @close="closeSettings" /></div></Transition>
     <div v-if="homeworkManageOpen" class="homework-float-layer" role="dialog" aria-modal="true" aria-label="悬浮作业板">
       <HomeworkPanel manage-float @close="homeworkManageOpen = false" />
     </div>

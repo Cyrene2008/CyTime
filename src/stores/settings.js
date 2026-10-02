@@ -7,8 +7,9 @@ const STORAGE_KEY = 'cytime.settings.v2'
 export const defaultSettings = {
   theme: 'dark-peach',
   accentColor: '',
-  startupMode: 'clock',
+  startupMode: 'time',
   startupWindowMode: 'normal',
+  idleReturnTime: false,
   uriRegistration: true,
   showClockSeconds: true,
   showDate: true,
@@ -19,6 +20,10 @@ export const defaultSettings = {
   showImportantDays: true,
   showDayProgress: true,
   showHomework: false,
+  showBlackboard: true,
+  blackboardPosition: 'auto',
+  blackboardFontScale: 100,
+  immersiveMode: false,
   showSchedule: true,
   homeworkPosition: 'left',
   homeworkFontSize: 13,
@@ -94,7 +99,8 @@ function readStoredSettings() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem('cytime.settings.v1') || '{}')
     const base = cloneSettings(defaultSettings)
     const merged = { ...base, ...(saved && typeof saved === 'object' ? saved : {}), quoteLocalSources: { ...base.quoteLocalSources, ...(saved?.quoteLocalSources || {}) }, quoteSources: saved?.quoteSources?.cytime ? { ...base.quoteSources, ...saved.quoteSources } : base.quoteSources }
-    if (!['clock', 'countdown', 'timer'].includes(merged.startupMode)) merged.startupMode = 'clock'
+    if (merged.startupMode === 'clock') merged.startupMode = 'time'
+    if (!['time', 'countdown', 'timer'].includes(merged.startupMode)) merged.startupMode = 'time'
     return merged
   } catch {
     return cloneSettings(defaultSettings)
@@ -111,6 +117,7 @@ export function applyTheme(settings) {
   root.style.colorScheme = dark ? 'dark' : 'light'
   root.dataset.font = settings.fontFamily
   root.dataset.background = settings.background
+  root.dataset.immersive = settings.immersiveMode ? 'on' : 'off'
 
   // One accent → full Fluent ramp (same idea as VueFluentWidgets accentColor).
   const accent = (settings.accentColor || '').trim()
@@ -133,6 +140,7 @@ export function applyTheme(settings) {
   root.style.setProperty('--status-dock-offset-y', `${Math.max(-16, Math.min(240, Number(settings.statusDockOffsetY) || 0))}px`)
   root.style.setProperty('--homework-width', `${Math.max(200, Math.min(520, Number(settings.homeworkWidth) || 300))}px`)
   root.style.setProperty('--homework-offset-x', `${Math.max(0, Math.min(240, Number(settings.homeworkOffsetX) || 0))}px`)
+  root.style.setProperty('--blackboard-font-scale', String(Math.max(70, Math.min(160, Number(settings.blackboardFontScale) || 100)) / 100))
   root.style.setProperty('--ui-scale', String(Math.max(50, Math.min(200, settings.uiScale)) / 100))
   root.style.setProperty('--widget-font-size', `${Math.max(10, Math.min(32, Number(settings.widgetFontSize) || 17))}px`)
   root.style.setProperty('--widget-label-font-size', `${Math.max(8, Math.min(20, Number(settings.widgetLabelFontSize) || 11))}px`)
