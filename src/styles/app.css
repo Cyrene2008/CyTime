@@ -584,9 +584,15 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .blackboard-notepad-text.empty { color: var(--text-muted); }
 .blackboard-notepad-input { width: 100%; min-height: 64px; max-height: 150px; resize: vertical; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 6px; outline: none; color: var(--text-primary); background: color-mix(in srgb, var(--bg-card-solid), transparent 25%); font-family: inherit; font-size: calc(12px * var(--blackboard-font-scale, 1)); line-height: 1.5; }
 
-/* ֵ�չ�����Ƕ�����ؼ������뵯������ */
+/* ֵ�չ�����Ƕ�����ؼ������뵯������ */
 .duty-member-form .fluent-select-wrapper { width: 96px; }
 .duty-chore-actions .fluent-select-wrapper, .duty-chore-add .fluent-select-wrapper { width: 112px; }
 .duty-member-form .fluent-select-wrapper .fluent-select, .duty-chore-actions .fluent-select-wrapper .fluent-select, .duty-chore-add .fluent-select-wrapper .fluent-select { min-width: 0; width: 100%; }
 .duty-date-row .fluent-calendar-date-picker { width: 150px; }
-.fluent-select-dropdown, .calendar-dropdown, .time-picker-dropdown, .color-picker-dropdown, .combo-box-dropdown, .auto-suggest-dropdown { zoom: var(--ui-scale, 1); }
+/* 弹层跟随全局缩放：transform 不影响 JS 计算的定位；max-width 防止视觉溢出视口。下拉列表逐项跟随缩放（容器宽高由 JS 按缩放后的触发器算出，不能整体缩放） */
+.calendar-dropdown, .time-picker-dropdown, .color-picker-dropdown { transform: scale(var(--ui-scale, 1)); transform-origin: top left; max-width: calc((100vw - 16px) / var(--ui-scale, 1)) !important; }
+.calendar-dropdown.dropdown-enter-from, .calendar-dropdown.dropdown-leave-to, .time-picker-dropdown.dropdown-enter-from, .time-picker-dropdown.dropdown-leave-to, .color-picker-dropdown.dropdown-enter-from, .color-picker-dropdown.dropdown-leave-to { transform: translateY(calc(-4px * var(--ui-scale, 1))) scale(var(--ui-scale, 1)); }
+.fluent-select-dropdown { padding: calc(4px * var(--ui-scale, 1)); }
+.fluent-select-dropdown .select-option { padding: calc(6px * var(--ui-scale, 1)) calc(10px * var(--ui-scale, 1)); font-size: calc(14px * var(--ui-scale, 1)); }
+
+.mode-nav a, .mode-nav a span { white-space: nowrap; }
