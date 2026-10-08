@@ -12,6 +12,7 @@ import { parseCountdownTarget } from './utils/time'
 import { FILING_NAME, FILING_URL } from './config/branding'
 import { desktopWindowAction, getDesktopStartupArgs, initDesktopBridge, isDesktop, openHomeworkManageWindow, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
 import { homeworkManageOpen } from './composables/useHomeworkManage'
+import { installPopupFit } from './services/popupFit'
 import HomeworkPanel from './components/HomeworkPanel.vue'
 import { fetchNetworkTime } from './services/timeSync'
 import { locateWeatherCity } from './services/weather'
@@ -66,6 +67,7 @@ let stopTaskWatch
 let stopSafeAreaWatch
 let stopViewPaddingWatch
 let stopDesktopBridge
+let disposePopupFit
 let timeSyncTimer
 let stopRightClick
 let idleReturnTimer
@@ -527,6 +529,7 @@ onMounted(async () => {
   window.addEventListener('resize', syncContentSafeTop)
   sideLayoutQuery?.addEventListener('change', updateTaskOverflow)
   sideLayoutQuery?.addEventListener('change', syncWideLayout)
+  disposePopupFit = installPopupFit()
   stopSafeAreaWatch = watch([isSettings, () => settingsStore.examModeActive, () => settingsStore.settings.statusDockScale, () => settingsStore.settings.statusDockOffsetY, () => settingsStore.settings.uiScale], async () => {
     await nextTick()
     observeSafeAreas()
@@ -557,6 +560,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', syncContentSafeTop)
   sideLayoutQuery?.removeEventListener('change', updateTaskOverflow)
   sideLayoutQuery?.removeEventListener('change', syncWideLayout)
+  disposePopupFit?.()
   taskResizeObserver?.disconnect()
   safeAreaObserver?.disconnect()
   stopTaskWatch?.()
