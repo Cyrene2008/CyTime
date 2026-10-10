@@ -16,9 +16,9 @@ use tauri_plugin_deep_link::DeepLinkExt;
 
 struct PendingUris(Arc<Mutex<Vec<String>>>);
 
-fn is_homework_manage_uri(uri: &str) -> bool {
-    let lower = uri.to_ascii_lowercase();
-    lower.starts_with("cytime://homework/manage") || lower.starts_with("cytime://homework/?") || lower.contains("cytime://homework/manage")
+fn is_homework_manage_uri(_uri: &str) -> bool {
+    // TODO: 暂时禁用悬浮作业板（窗口出现约 1 秒后消失，后续再修）
+    false
 }
 
 /// Independent floating homework manager window (works with or without main visible).

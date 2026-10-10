@@ -242,12 +242,12 @@ function handleDesktopUri(rawUri) {
   try {
     const uri = new URL(String(rawUri))
 
-    // Homework manage: independent floating window — do not force-show main.
-    if (uri.hostname === 'homework' && (uri.pathname === '/manage' || uri.pathname === 'manage' || uri.pathname === '' || uri.pathname === '/')) {
-      if (isDesktop()) openHomeworkManageWindow()
-      else homeworkManageOpen.value = true
-      return
-    }
+    // Homework manage: temporarily disabled (floating window closes ~1s after opening).
+    // if (uri.hostname === 'homework' && (uri.pathname === '/manage' || uri.pathname === 'manage' || uri.pathname === '' || uri.pathname === '/')) {
+    //   if (isDesktop()) openHomeworkManageWindow()
+    //   else homeworkManageOpen.value = true
+    //   return
+    // }
 
     const mode = uri.searchParams.get('mode')
     if (mode && ['mini', 'normal', 'max', 'full'].includes(mode)) {
