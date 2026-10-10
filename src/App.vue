@@ -10,9 +10,9 @@ import { useQuotesStore } from './stores/quotes'
 import { dayProgress, formatDuration } from './utils/time'
 import { parseCountdownTarget } from './utils/time'
 import { FILING_NAME, FILING_URL } from './config/branding'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { desktopWindowAction, getDesktopStartupArgs, initDesktopBridge, isDesktop, openHomeworkManageWindow, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
 import { homeworkManageOpen } from './composables/useHomeworkManage'
+import { installPopupFit } from './services/popupFit'
 import HomeworkPanel from './components/HomeworkPanel.vue'
 import { fetchNetworkTime } from './services/timeSync'
 import { locateWeatherCity } from './services/weather'
@@ -67,6 +67,7 @@ let stopTaskWatch
 let stopSafeAreaWatch
 let stopViewPaddingWatch
 let stopDesktopBridge
+let disposePopupFit
 let timeSyncTimer
 let stopRightClick
 let idleReturnTimer
@@ -148,10 +149,14 @@ function updateViewPadding() {
     const bottoms = children.map(element => element.getBoundingClientRect().bottom)
     const content = (Math.max(...bottoms) - Math.min(...tops)) / scale
     const minTop = 24
-    const available = viewHeight - padBottom
-    const centered = minTop + Math.max(0, (available - minTop - content) / 2)
-    const top = centered >= safeTop ? centered : Math.max(minTop, Math.min(safeTop, available - content))
-    view.style.paddingTop = `${Math.ceil(top)}px`
+    const maxTop = Math.max(minTop, viewHeight - padBottom - content)
+    // 目标：内容在视口内垂直居中；若居中会压到顶部导航且下推后仍能容纳，则让位到导航下方
+    let target = Math.max(minTop, (viewHeight - content) / 2)
+    if (safeTop > target && safeTop + content <= viewHeight - padBottom) target = safeTop
+    target = Math.min(target, maxTop)
+    // flex 会在 padding 盒内再居中一次，因此由目标位置反推 padding-top
+    const paddingTop = 2 * target - viewHeight + padBottom + content
+    view.style.paddingTop = `${Math.max(0, Math.ceil(paddingTop))}px`
   }
 }
 
@@ -204,11 +209,6 @@ function minimizeWindow() {
   desktopWindowAction('minimize')
 }
 function closeWindow() { desktopWindowAction('close') }
-function startDrag(event) {
-  if (!isDesktop() || event.buttons !== 1) return
-  event.preventDefault()
-  getCurrentWindow().startDragging().catch(() => {})
-}
 function maximizeWindow() {
   if (desktopMini.value) {
     desktopMini.value = false
@@ -529,6 +529,7 @@ onMounted(async () => {
   window.addEventListener('resize', syncContentSafeTop)
   sideLayoutQuery?.addEventListener('change', updateTaskOverflow)
   sideLayoutQuery?.addEventListener('change', syncWideLayout)
+  disposePopupFit = installPopupFit()
   stopSafeAreaWatch = watch([isSettings, () => settingsStore.examModeActive, () => settingsStore.settings.statusDockScale, () => settingsStore.settings.statusDockOffsetY, () => settingsStore.settings.uiScale], async () => {
     await nextTick()
     observeSafeAreas()
@@ -559,6 +560,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', syncContentSafeTop)
   sideLayoutQuery?.removeEventListener('change', updateTaskOverflow)
   sideLayoutQuery?.removeEventListener('change', syncWideLayout)
+  disposePopupFit?.()
   taskResizeObserver?.disconnect()
   safeAreaObserver?.disconnect()
   stopTaskWatch?.()
@@ -581,7 +583,7 @@ onUnmounted(() => {
 
 <template>
   <div class="app-root" :class="{ 'is-desktop': desktopAvailable, 'titlebar-hidden': desktopAvailable && fullscreenActive }">
-    <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" @mousedown="startDrag"><span>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button v-if="!desktopMini" type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
+    <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" data-tauri-drag-region><span data-tauri-drag-region>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button v-if="!desktopMini" type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
     <div class="app-shell" ref="shellRef" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, [`window-mode-${desktopWindowMode}`]: desktopAvailable }">
     <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息">
       <div v-if="settingsStore.settings.showWeather" class="status-weather"><strong>{{ weatherTemperature }}°</strong><FluentIcon icon="weather-partly-cloudy-day-20-regular" :width="18" /><span>{{ weatherStatus }}</span></div>
