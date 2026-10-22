@@ -13,15 +13,20 @@ const contentStore = useContentStore()
 const settingsStore = useSettingsStore()
 
 const CUSTOM_SUBJECT = '__custom__'
-const subjectPresets = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '政治', '地理', '其他']
-const subjectOptions = [...subjectPresets.map(value => ({ value, label: value })), { value: CUSTOM_SUBJECT, label: '自定义…' }]
+const DEFAULT_SUBJECT_PRESETS = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '政治', '地理', '其他']
+const subjectPresets = computed(() => {
+  const list = contentStore.content.homeworkSubjectPresets
+  return Array.isArray(list) && list.length ? list : DEFAULT_SUBJECT_PRESETS
+})
+const subjectOptions = computed(() => [...subjectPresets.value.map(value => ({ value, label: value })), { value: CUSTOM_SUBJECT, label: '自定义…' }])
+const presetOptions = computed(() => subjectPresets.value.map(value => ({ value, label: value })))
 
 const items = computed(() => contentStore.content.homework)
 const historyItems = computed(() => [...contentStore.content.homeworkHistory].reverse())
 const historyOpen = ref(false)
 const editorOpen = ref(false)
 const editingId = ref(null)
-const subjectChoice = ref(subjectPresets[0])
+const subjectChoice = ref(contentStore.content.homeworkSubjectPresets?.[0] || DEFAULT_SUBJECT_PRESETS[0])
 const customSubject = ref('')
 const content = ref('')
 const startDate = ref('')
@@ -31,6 +36,14 @@ const dueTime = ref('')
 const formError = ref('')
 const now = ref(Date.now())
 const selectedHistoryIds = ref([])
+const templateOpen = ref(false)
+const templateSubject = ref(subjectChoice.value)
+const templateStartTime = ref('')
+const templateDueDays = ref(0)
+const templateDueTime = ref('')
+const newPresetName = ref('')
+const templateNotice = ref('')
+let templateNoticeTimer = 0
 let rotateTimer
 let nowTimer
 let floatIdleTimer = 0
@@ -317,8 +330,8 @@ function scheduleMeasure() {
 function openEditor(item = null) {
   clearFloatIdle()
   editingId.value = item?.id || null
-  const subject = item?.subject || subjectPresets[0]
-  if (subjectPresets.includes(subject)) {
+  const subject = item?.subject || subjectPresets.value[0]
+  if (subjectPresets.value.includes(subject)) {
     subjectChoice.value = subject
     customSubject.value = ''
   } else {
@@ -333,11 +346,14 @@ function openEditor(item = null) {
   dueDate.value = due.date
   dueTime.value = due.time
   formError.value = ''
+  templateOpen.value = false
   editorOpen.value = true
+  if (!item) applySubjectTemplate(subjectChoice.value)
 }
 
 function closeEditor() {
   editorOpen.value = false
+  templateOpen.value = false
   if (props.manageFloat) startFloatIdle()
 }
 
@@ -350,6 +366,86 @@ function todayDate() {
   const d = new Date()
   const pad = n => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function addDays(dateStr, days) {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + days)
+  const pad = n => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function templateFor(subject) {
+  return contentStore.content.homeworkTemplates?.[subject] || null
+}
+
+function applySubjectTemplate(subject) {
+  if (!subject || subject === CUSTOM_SUBJECT || editingId.value || !editorOpen.value) return
+  const template = templateFor(subject)
+  if (!template) return
+  const base = todayDate()
+  startDate.value = base
+  startTime.value = template.startTime || ''
+  const days = Math.max(0, Number(template.dueOffsetDays) || 0)
+  dueDate.value = addDays(base, days)
+  dueTime.value = template.dueTime || ''
+}
+
+function showTemplateNotice(text) {
+  templateNotice.value = text
+  window.clearTimeout(templateNoticeTimer)
+  templateNoticeTimer = window.setTimeout(() => { templateNotice.value = '' }, 1800)
+}
+
+function loadTemplate(subject) {
+  const template = templateFor(subject)
+  templateStartTime.value = template?.startTime || ''
+  templateDueDays.value = template?.dueOffsetDays || 0
+  templateDueTime.value = template?.dueTime || ''
+}
+
+function openTemplates() {
+  clearFloatIdle()
+  const subject = subjectPresets.value.includes(templateSubject.value) ? templateSubject.value : subjectPresets.value[0]
+  templateSubject.value = subject
+  loadTemplate(subject)
+  templateNotice.value = ''
+  templateOpen.value = true
+}
+
+function saveTemplate() {
+  contentStore.saveHomeworkTemplate(templateSubject.value, {
+    startTime: templateStartTime.value,
+    dueOffsetDays: templateDueDays.value,
+    dueTime: templateDueTime.value
+  })
+  showTemplateNotice('已保存')
+}
+
+function clearTemplate() {
+  contentStore.clearHomeworkTemplate(templateSubject.value)
+  templateStartTime.value = ''
+  templateDueDays.value = 0
+  templateDueTime.value = ''
+  showTemplateNotice('已清空')
+}
+
+function addPreset() {
+  const name = newPresetName.value.trim()
+  if (!name) return
+  if (!subjectPresets.value.includes(name)) {
+    contentStore.setHomeworkSubjectPresets([...subjectPresets.value, name])
+    templateSubject.value = name
+    loadTemplate(name)
+  }
+  newPresetName.value = ''
+}
+
+function removePreset(subject) {
+  if (subjectPresets.value.length <= 1) return
+  contentStore.setHomeworkSubjectPresets(subjectPresets.value.filter(item => item !== subject))
+  contentStore.clearHomeworkTemplate(subject)
 }
 
 function saveHomework() {
@@ -453,6 +549,7 @@ onUnmounted(() => {
   window.clearInterval(rotateTimer)
   window.clearInterval(nowTimer)
   window.clearTimeout(floatIdleTimer)
+  window.clearTimeout(templateNoticeTimer)
   window.removeEventListener('resize', scheduleMeasure)
   window.removeEventListener('pointerdown', resetFloatIdle, { capture: true })
   window.removeEventListener('keydown', resetFloatIdle, { capture: true })
@@ -480,6 +577,22 @@ watch(() => [settingsStore.settings.homeworkWidth, settingsStore.settings.homewo
 
 watch(() => settingsStore.settings.homeworkPageInterval, () => {
   startRotateTimer()
+})
+
+watch(subjectChoice, subject => {
+  applySubjectTemplate(subject)
+})
+
+watch(templateSubject, subject => {
+  loadTemplate(subject)
+})
+
+watch(subjectPresets, list => {
+  if (!list.includes(templateSubject.value)) {
+    templateSubject.value = list[0]
+    loadTemplate(list[0])
+  }
+  if (subjectChoice.value !== CUSTOM_SUBJECT && !list.includes(subjectChoice.value)) subjectChoice.value = list[0]
 })
 </script>
 
@@ -527,21 +640,63 @@ watch(() => settingsStore.settings.homeworkPageInterval, () => {
 
     <Teleport to=".app-shell">
       <div v-if="editorOpen" class="focus-dialog-layer" @click.self="closeEditor">
-        <form class="focus-dialog homework-dialog surface-panel" @submit.prevent="saveHomework" @click="guardSubmitClick">
-          <div class="dialog-heading"><div><span class="eyebrow">HOMEWORK</span><h2>{{ editingId ? '编辑作业' : '布置作业' }}</h2></div><button type="button" class="dialog-close" aria-label="关闭作业编辑" @click="closeEditor"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></div>
-          <div class="homework-form">
-            <label class="dialog-label">科目<FluentSelect v-model="subjectChoice" :options="subjectOptions" /></label>
-            <label v-if="subjectChoice === CUSTOM_SUBJECT" class="dialog-label">自定义科目<input v-model="customSubject" placeholder="例如：信息技术" /></label>
-            <label class="dialog-label">作业内容<textarea v-model="content" rows="4" placeholder="例如：完成练习册第 12 页"></textarea></label>
-            <div class="homework-time-grid">
-              <div class="dialog-label">开始时间<div class="homework-time-row"><FluentDatePicker v-model="startDate" placeholder="日期" /><FluentTimePicker v-model="startTime" placeholder="时间" /></div></div>
-              <div class="dialog-label">截止时间<div class="homework-time-row"><FluentDatePicker v-model="dueDate" placeholder="日期" /><FluentTimePicker v-model="dueTime" placeholder="时间" /></div></div>
+        <div class="focus-dialog homework-dialog surface-panel">
+          <div class="dialog-heading">
+            <div><span class="eyebrow">{{ templateOpen ? 'TEMPLATES' : 'HOMEWORK' }}</span><h2>{{ templateOpen ? '作业模板' : editingId ? '编辑作业' : '布置作业' }}</h2></div>
+            <div class="dialog-heading-tools">
+              <button v-if="templateOpen" type="button" class="dialog-tool" title="返回布置作业" aria-label="返回布置作业" @click="templateOpen = false"><FluentIcon icon="arrow-left-20-regular" :width="17" /></button>
+              <button v-else-if="!editingId" type="button" class="dialog-tool" title="作业模板" aria-label="管理作业模板" @click="openTemplates"><FluentIcon icon="book-template-20-regular" :width="17" /></button>
+              <button type="button" class="dialog-close" aria-label="关闭作业编辑" @click="closeEditor"><FluentIcon icon="dismiss-20-regular" :width="18" /></button>
             </div>
-            <p class="homework-hint">未填写日期时自动按今日计算；填写了日期则需同时填写开始和截止日期。</p>
-            <p v-if="formError" class="field-error">{{ formError }}</p>
           </div>
-          <div class="dialog-actions"><button type="button" class="focus-control" @click="closeEditor">取消</button><button type="submit" class="focus-control primary">{{ editingId ? '保存' : '布置' }}</button></div>
-        </form>
+          <form v-if="!templateOpen" @submit.prevent="saveHomework" @click="guardSubmitClick">
+            <div class="homework-form">
+              <label class="dialog-label">科目<FluentSelect v-model="subjectChoice" :options="subjectOptions" /></label>
+              <label v-if="subjectChoice === CUSTOM_SUBJECT" class="dialog-label">自定义科目<input v-model="customSubject" placeholder="例如：信息技术" /></label>
+              <label class="dialog-label">作业内容<textarea v-model="content" rows="4" placeholder="例如：完成练习册第 12 页"></textarea></label>
+              <div class="homework-time-grid">
+                <div class="dialog-label">开始时间<div class="homework-time-row"><FluentDatePicker v-model="startDate" placeholder="日期" /><FluentTimePicker v-model="startTime" placeholder="时间" /></div></div>
+                <div class="dialog-label">截止时间<div class="homework-time-row"><FluentDatePicker v-model="dueDate" placeholder="日期" /><FluentTimePicker v-model="dueTime" placeholder="时间" /></div></div>
+              </div>
+              <p class="homework-hint">未填写日期时自动按今日计算；填写了日期则需同时填写开始和截止日期。</p>
+              <p v-if="formError" class="field-error">{{ formError }}</p>
+            </div>
+            <div class="dialog-actions"><button type="button" class="focus-control" @click="closeEditor">取消</button><button type="submit" class="focus-control primary">{{ editingId ? '保存' : '布置' }}</button></div>
+          </form>
+          <div v-else class="homework-template">
+            <section class="homework-template-section">
+              <h3>预设科目</h3>
+              <p class="homework-hint">布置作业时科目下拉框按此顺序显示；移除科目会同时删除该科目的模板。</p>
+              <div class="template-preset-list">
+                <span v-for="subject in subjectPresets" :key="subject" class="template-preset">
+                  {{ subject }}
+                  <button type="button" :aria-label="`移除${subject}`" :disabled="subjectPresets.length <= 1" @click="removePreset(subject)">×</button>
+                </span>
+              </div>
+              <div class="template-preset-add">
+                <input v-model="newPresetName" placeholder="添加科目，例如：信息技术" @keydown.enter.prevent="addPreset" />
+                <button type="button" class="micro-button micro-primary" @click="addPreset">添加</button>
+              </div>
+            </section>
+            <section class="homework-template-section">
+              <h3>科目模板</h3>
+              <label class="dialog-label">科目<FluentSelect v-model="templateSubject" :options="presetOptions" /></label>
+              <label class="dialog-label">开始时间<FluentTimePicker v-model="templateStartTime" placeholder="开始时间" /></label>
+              <label class="dialog-label">截止时间
+                <div class="homework-time-row">
+                  <span class="template-days"><input v-model.number="templateDueDays" type="number" min="0" max="365" step="1" /><small>天后截止，0 为当天</small></span>
+                  <FluentTimePicker v-model="templateDueTime" placeholder="截止时间" />
+                </div>
+              </label>
+              <p class="homework-hint">模板仅预填新建作业的开始/截止时间；编辑已布置的作业时不会应用。</p>
+              <div class="template-actions">
+                <span class="template-notice">{{ templateNotice }}</span>
+                <button type="button" class="micro-button" @click="clearTemplate">清空模板</button>
+                <button type="button" class="micro-button micro-primary" @click="saveTemplate">保存模板</button>
+              </div>
+            </section>
+          </div>
+        </div>
       </div>
     </Teleport>
 

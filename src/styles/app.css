@@ -596,3 +596,36 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .fluent-select-dropdown .select-option { padding: calc(6px * var(--ui-scale, 1)) calc(10px * var(--ui-scale, 1)); font-size: calc(14px * var(--ui-scale, 1)); }
 
 .mode-nav a, .mode-nav a span { white-space: nowrap; }
+
+.dialog-heading-tools { display: flex; align-items: center; gap: 6px; }
+.dialog-tool { display: grid; place-items: center; width: 29px; height: 29px; border: 0; border-radius: 5px; color: var(--text-muted); background: transparent; cursor: pointer; }
+.dialog-tool:hover { color: var(--accent); background: var(--bg-hover); }
+.homework-template { display: grid; gap: 12px; padding: 18px 20px 20px; }
+.homework-template-section { display: grid; gap: 8px; }
+.homework-template-section + .homework-template-section { padding-top: 14px; border-top: 1px solid var(--border-subtle); }
+.homework-template-section h3 { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.homework-template .dialog-label { display: flex; flex-direction: column; gap: 6px; margin: 0; color: var(--text-secondary); font-size: 11px; }
+.template-preset-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.template-preset { display: inline-flex; align-items: center; gap: 3px; padding: 3px 4px 3px 9px; border: 1px solid var(--border-default); border-radius: 999px; color: var(--text-secondary); font-size: 11px; }
+.template-preset button { display: grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; color: var(--text-muted); background: transparent; cursor: pointer; font-size: 13px; line-height: 1; }
+.template-preset button:hover { color: var(--accent); background: var(--bg-hover); }
+.template-preset button:disabled { opacity: .35; cursor: default; }
+.template-preset-add { display: flex; gap: 6px; }
+.template-preset-add input { flex: 1; min-width: 0; height: 32px; padding: 0 9px; border: 1px solid var(--border-strong); border-radius: 5px; outline: none; color: var(--text-primary); background: var(--bg-card); font-size: 12px; }
+.template-preset-add input:focus { border-color: var(--accent); }
+.template-preset-add .micro-button { min-height: 32px; padding: 0 12px; border: 1px solid var(--border-strong); }
+.template-preset-add .micro-button:hover { border-color: var(--accent); }
+.template-preset-add .micro-primary { border-color: transparent; color: var(--text-on-accent); background: var(--accent); }
+.template-preset-add .micro-primary:hover { border-color: transparent; color: var(--text-on-accent); background: var(--accent-hover); }
+.template-days { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.template-days input { width: 62px; flex: 0 0 auto; height: 35px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 5px; outline: none; color: var(--text-primary); background: var(--bg-card); text-align: center; }
+.template-days input:focus { border-color: var(--accent); }
+.template-days small { color: var(--text-muted); font-size: 10px; line-height: 1.4; }
+.homework-template .homework-time-row { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+.homework-template .homework-hint { margin: 0; }
+.template-actions { display: flex; align-items: center; gap: 6px; }
+.template-notice { margin-right: auto; min-height: 14px; color: var(--accent); font-size: 11px; }
+.template-actions .micro-button { min-height: 30px; padding: 0 12px; border: 1px solid var(--border-strong); }
+.template-actions .micro-button:hover { border-color: var(--accent); }
+.template-actions .micro-primary { border-color: transparent; color: var(--text-on-accent); background: var(--accent); }
+.template-actions .micro-primary:hover { border-color: transparent; color: var(--text-on-accent); background: var(--accent-hover); }

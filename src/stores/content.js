@@ -30,6 +30,8 @@ const defaultContent = {
   schedule: [],
   homework: [],
   homeworkHistory: [],
+  homeworkSubjectPresets: ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '政治', '地理', '其他'],
+  homeworkTemplates: {},
   notepad: '',
   duty: defaultDuty()
 }
@@ -45,6 +47,29 @@ function normalizeDuty(saved) {
   return duty
 }
 
+function normalizeSubjectPresets(saved) {
+  const list = Array.isArray(saved)
+    ? saved.map(item => String(item || '').trim()).filter(Boolean)
+    : []
+  if (!list.length) return [...defaultContent.homeworkSubjectPresets]
+  return [...new Set(list)].slice(0, 24)
+}
+
+function normalizeHomeworkTemplates(saved) {
+  if (!saved || typeof saved !== 'object') return {}
+  const templates = {}
+  for (const [subject, value] of Object.entries(saved)) {
+    const key = String(subject || '').trim()
+    if (!key || !value || typeof value !== 'object') continue
+    templates[key] = {
+      startTime: typeof value.startTime === 'string' ? value.startTime : '',
+      dueOffsetDays: Math.max(0, Math.min(365, Math.round(Number(value.dueOffsetDays) || 0))),
+      dueTime: typeof value.dueTime === 'string' ? value.dueTime : ''
+    }
+  }
+  return templates
+}
+
 function readContent() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
@@ -58,6 +83,8 @@ function readContent() {
       schedule: Array.isArray(saved.schedule) ? saved.schedule : [],
       homework: Array.isArray(saved.homework) ? saved.homework : [],
       homeworkHistory: Array.isArray(saved.homeworkHistory) ? saved.homeworkHistory : [],
+      homeworkSubjectPresets: normalizeSubjectPresets(saved.homeworkSubjectPresets),
+      homeworkTemplates: normalizeHomeworkTemplates(saved.homeworkTemplates),
       notepad: typeof saved.notepad === 'string' ? saved.notepad : '',
       duty: normalizeDuty(saved.duty)
     }
@@ -326,6 +353,27 @@ export const useContentStore = defineStore('content', () => {
     if (!Object.keys(byRoster).length) delete content.duty.anchors[roster.id]
     persist()
   }
+  function setHomeworkSubjectPresets(subjects) {
+    const list = [...new Set((subjects || []).map(item => String(item || '').trim()).filter(Boolean))].slice(0, 24)
+    content.homeworkSubjectPresets = list.length ? list : ['其他']
+    persist()
+  }
+  function saveHomeworkTemplate(subject, template) {
+    const key = String(subject || '').trim()
+    if (!key) return
+    content.homeworkTemplates[key] = {
+      startTime: String(template?.startTime || ''),
+      dueOffsetDays: Math.max(0, Math.min(365, Math.round(Number(template?.dueOffsetDays) || 0))),
+      dueTime: String(template?.dueTime || '')
+    }
+    persist()
+  }
+  function clearHomeworkTemplate(subject) {
+    const key = String(subject || '').trim()
+    if (!key || !(key in content.homeworkTemplates)) return
+    delete content.homeworkTemplates[key]
+    persist()
+  }
   function updateNotepad(text) {
     content.notepad = String(text || '')
     persist()
@@ -337,5 +385,5 @@ export const useContentStore = defineStore('content', () => {
   }
 
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, updateNotepad }
+  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, setHomeworkSubjectPresets, saveHomeworkTemplate, clearHomeworkTemplate, updateNotepad }
 })
