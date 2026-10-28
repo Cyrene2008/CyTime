@@ -13,6 +13,7 @@ import { FILING_NAME, FILING_URL } from './config/branding'
 import { desktopWindowAction, getDesktopStartupArgs, initDesktopBridge, isDesktop, openHomeworkManageWindow, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
 import { homeworkManageOpen } from './composables/useHomeworkManage'
 import { installPopupFit } from './services/popupFit'
+import { dialogActivityKey } from './composables/useDialogActivity'
 import HomeworkPanel from './components/HomeworkPanel.vue'
 import { fetchNetworkTime } from './services/timeSync'
 import { locateWeatherCity } from './services/weather'
@@ -26,6 +27,8 @@ const weatherStore = useWeatherStore()
 const quotesStore = useQuotesStore()
 const controlsHidden = ref(false)
 const settingsOpen = ref(false)
+const dialogActivity = ref(0)
+provide(dialogActivityKey, dialogActivity)
 const settingsPane = ref('')
 const appVersion = __APP_VERSION__
 const buildId = __BUILD_ID__
@@ -36,7 +39,7 @@ const desktopAutoStart = ref(false)
 const fullscreenActive = ref(false)
 const isHomeworkWindow = ref(false)
 const isSettings = computed(() => settingsOpen.value)
-provide('cytimeStageActive', computed(() => !isSettings.value))
+provide('cytimeStageActive', computed(() => !isSettings.value && !dialogActivity.value))
 const purePromptOpen = ref(false)
 const purePromptSeconds = ref(10)
 const currentDate = computed(() => new Date(timeStore.now))
@@ -73,6 +76,7 @@ let timeSyncTimer
 let stopRightClick
 let idleReturnTimer
 let schoolDayTimer
+let lastControlsActivity = 0
 const navItems = [
   { path: '/time', label: '时钟', icon: 'clock-20-regular' },
   { path: '/countdown', label: '倒计时', icon: 'arrow-clockwise-20-regular' },
@@ -105,7 +109,7 @@ function updateTaskOverflow() {
 }
 
 function syncContentSafeTop() {
-  if (isSettings.value) return
+  if (isSettings.value || dialogActivity.value) return
   const shell = shellRef.value
   if (!shell) return
   const shellRect = shell.getBoundingClientRect()
@@ -128,7 +132,7 @@ function syncContentSafeTop() {
 }
 
 function updateViewPadding() {
-  if (isSettings.value) return
+  if (isSettings.value || dialogActivity.value) return
   const shell = shellRef.value
   if (!shell) return
   if (settingsStore.examModeActive) {
@@ -234,8 +238,9 @@ function closeSettings() {
 
 function scheduleIdleReturn() {
   window.clearTimeout(idleReturnTimer)
-  if (!settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value) return
+  if (!settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value || isSettings.value || dialogActivity.value || purePromptOpen.value) return
   idleReturnTimer = window.setTimeout(() => {
+    if (!settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value || isSettings.value || dialogActivity.value || purePromptOpen.value) return
     if (route.path !== '/time') router.push('/time')
   }, 30000)
 }
@@ -295,7 +300,7 @@ let audioContext
 function prepareAudio() {
   if (typeof AudioContext === 'undefined') return
   audioContext ||= new AudioContext()
-  audioContext.resume?.()
+  if (audioContext.state !== 'running') audioContext.resume?.().catch(() => {})
 }
 
 // 《昔涟》简谱（1=♭B，4/4）：曾(3)1 许(1)0.5 下(5)1 心(6)0.5 愿(4)1 | 等待(2 3) | 你(4·) 的出现(3 2 3 –)
@@ -368,13 +373,25 @@ function onCountdownComplete(event) {
 }
 
 let wakeLock
+let wakeLockRequest
+let wakeLockDisposed = false
 async function syncWakeLock() {
-  if (!settingsStore.settings.preventSleep || !navigator.wakeLock || document.visibilityState !== 'visible') {
-    if (wakeLock) await wakeLock.release().catch(() => {})
+  const wanted = () => !wakeLockDisposed && settingsStore.settings.preventSleep && navigator.wakeLock && document.visibilityState === 'visible'
+  if (!wanted()) {
+    const previous = wakeLock
     wakeLock = undefined
+    if (previous) await previous.release().catch(() => {})
     return
   }
-  try { wakeLock = await navigator.wakeLock.request('screen') } catch {}
+  if ((wakeLock && !wakeLock.released) || wakeLockRequest) return
+  try {
+    wakeLockRequest = navigator.wakeLock.request('screen')
+    const next = await wakeLockRequest
+    if (!wanted()) { await next.release().catch(() => {}); return }
+    wakeLock = next
+    next.addEventListener('release', () => { if (wakeLock === next) wakeLock = undefined }, { once: true })
+  } catch {}
+  finally { wakeLockRequest = undefined }
 }
 
 function notifyTask(title, body) {
@@ -389,7 +406,7 @@ function closePurePrompt() {
 }
 
 function schedulePurePrompt() {
-  if (isSettings.value || settingsStore.examModeActive) return
+  if (isSettings.value || dialogActivity.value || settingsStore.examModeActive) return
   closePurePrompt()
   purePromptSeconds.value = 10
   purePromptOpen.value = true
@@ -465,7 +482,7 @@ watch(() => [settingsStore.settings.timeSyncEnabled, settingsStore.settings.time
   }
 })
 watch(isSettings, open => { if (!open) window.setTimeout(schedulePurePrompt, 180) })
-watch([() => settingsStore.settings.idleReturnTime, desktopMini], scheduleIdleReturn)
+watch([() => settingsStore.settings.idleReturnTime, desktopMini, isHomeworkWindow, isSettings, dialogActivity, purePromptOpen], scheduleIdleReturn)
 
 onMounted(async () => {
   desktopAvailable.value = await probeDesktop()
@@ -481,8 +498,11 @@ onMounted(async () => {
   schoolDayTimer = window.setInterval(() => contentStore.recordSchoolDay(), 60000)
   dayRotationTimer = window.setInterval(() => { if (upcomingDays.value.length > 1) dayRotation.value = (dayRotation.value + 1) % upcomingDays.value.length }, 15000)
   weatherTimer = window.setInterval(() => { if (settingsStore.settings.showWeather) weatherStore.refresh(settingsStore.settings.weatherCityNum, true) }, 30 * 60 * 1000)
-  showControlsHandler = () => {
-    prepareAudio()
+  showControlsHandler = event => {
+    const at = performance.now()
+    if (event?.type === 'pointermove' && at - lastControlsActivity < 200) return
+    lastControlsActivity = at
+    if (event?.type === 'pointerdown' || event?.type === 'keydown') prepareAudio()
     controlsHidden.value = false
     window.clearTimeout(controlsTimer)
     controlsTimer = window.setTimeout(() => { controlsHidden.value = true }, 10000)
@@ -540,7 +560,7 @@ onMounted(async () => {
   })
   nextTick(observeSafeAreas)
   if (document.fonts?.ready) document.fonts.ready.then(() => updateViewPadding()).catch(() => {})
-  stopViewPaddingWatch = watch([() => isSettings.value ? null : Math.floor(timeStore.now / 1000), () => route.path], async () => {
+  stopViewPaddingWatch = watch([() => isSettings.value || dialogActivity.value ? null : Math.floor(timeStore.now / 1000), () => route.path], async () => {
     await nextTick()
     updateViewPadding()
   })
@@ -548,6 +568,8 @@ onMounted(async () => {
   if (!isHomeworkWindow.value) window.setTimeout(schedulePurePrompt, 550)
 })
 onUnmounted(() => {
+  wakeLockDisposed = true
+  wakeLock?.release?.().catch(() => {})
   timeStore.stop()
   quotesStore.stop()
   window.clearInterval(weatherTimer)
@@ -581,6 +603,7 @@ onUnmounted(() => {
   }
   if (stopRightClick) document.removeEventListener('contextmenu', stopRightClick)
   document.oncontextmenu = null
+  audioContext?.close?.().catch(() => {})
   delete window.__cytimeShowControls
 })
 </script>

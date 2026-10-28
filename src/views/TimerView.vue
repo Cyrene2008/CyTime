@@ -3,6 +3,7 @@ import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTimeStore } from '../stores/time'
 import { useDigitBox } from '../composables/useDigitBox'
 import { useDisplayTime } from '../composables/useDisplayTime'
+import { useDialogActivity } from '../composables/useDialogActivity'
 import { chooseAndSaveFile } from '../services/desktop'
 import { MAX_TIMER_LAPS, formatLapDuration, serializeTimerLaps } from '../services/timerLaps'
 import { fileNamePart } from '../utils/csv'
@@ -15,6 +16,7 @@ const label = ref('')
 const mode = ref('absolute')
 const modeOptions = [{ value: 'absolute', label: '连续计时' }, { value: 'runtime', label: '本次计时' }]
 const settingsOpen = ref(false)
+useDialogActivity([settingsOpen])
 const lapsOpen = ref(false)
 const lapPage = ref(1)
 const lapMessage = ref('')

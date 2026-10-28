@@ -3,12 +3,14 @@ import { computed, ref, watch } from 'vue'
 import { useTimeStore } from '../stores/time'
 import { useDigitBox } from '../composables/useDigitBox'
 import { useDisplayTime } from '../composables/useDisplayTime'
+import { useDialogActivity } from '../composables/useDialogActivity'
 
 const timeStore = useTimeStore()
 const { now } = useDisplayTime()
 const label = ref('')
 const inputError = ref('')
 const settingsOpen = ref(false)
+useDialogActivity([settingsOpen])
 const hours = ref(0)
 const minutes = ref(10)
 const seconds = ref(0)

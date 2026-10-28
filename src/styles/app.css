@@ -693,3 +693,18 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .duty-preview-toolbar .fluent-calendar-date-picker { width: 150px; }
 .duty-preview-toolbar > .fluent-select-wrapper { width: 120px; }
 .duty-stats-actions { margin-top: 12px; }
+
+.focus-dialog-layer { backdrop-filter: none; background: rgba(0, 0, 0, .56); }
+.focus-dialog.surface-panel { backdrop-filter: none; background: var(--bg-card-solid); }
+
+@media (any-pointer: coarse) {
+  .settings-close, .dialog-close, .dialog-tool { width: 40px; height: 40px; min-height: 40px; flex-shrink: 0; }
+  .settings-nav-item, .settings-group-button { min-height: 44px; }
+  .category-chip, .micro-button, .subtle-button, .icon-text-button, .focus-control { min-height: 36px; }
+  .footer-action, .quick-options button { min-height: 40px; }
+  .fluent-select, .calendar-date-picker-trigger, .time-picker-trigger { min-height: 40px; }
+  .duty-name-input, .duty-mini-label input { min-height: 34px; }
+  .switch { position: relative; width: 48px; height: 30px; min-width: 48px; min-height: 30px; border-radius: 999px; }
+  .switch i { top: 50%; left: 4px; width: 22px; height: 22px; transform: translate(0, -50%); }
+  .switch.on i { transform: translate(18px, -50%); }
+}

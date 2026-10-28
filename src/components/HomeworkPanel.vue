@@ -3,6 +3,7 @@ import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from '
 import { useContentStore } from '../stores/content'
 import { useSettingsStore } from '../stores/settings'
 import { chooseAndSaveFile } from '../services/desktop'
+import { useDialogActivity } from '../composables/useDialogActivity'
 
 const props = defineProps({
   manageFloat: { type: Boolean, default: false }
@@ -27,6 +28,7 @@ const items = computed(() => contentStore.content.homework)
 const historyItems = computed(() => [...contentStore.content.homeworkHistory].reverse())
 const historyOpen = ref(false)
 const editorOpen = ref(false)
+useDialogActivity([editorOpen, historyOpen])
 const editingId = ref(null)
 const subjectChoice = ref(contentStore.content.homeworkSubjectPresets?.[0] || DEFAULT_SUBJECT_PRESETS[0])
 const customSubject = ref('')
