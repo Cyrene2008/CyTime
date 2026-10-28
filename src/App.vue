@@ -226,6 +226,7 @@ function openSettings(pane = '') {
   settingsOpen.value = true
 }
 provide('cytimeOpenSettings', openSettings)
+provide('cytimeRefreshLayout', () => nextTick(updateViewPadding))
 
 function closeSettings() {
   settingsOpen.value = false

@@ -660,3 +660,19 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .backup-group strong { font-size: 12px; }
 .backup-group small { color: var(--text-muted); font-size: 10px; }
 @media (max-width: 620px) { .backup-groups { grid-template-columns: 1fr; } }
+
+.focus-view.has-laps .focus-controls { margin-top: 24px; }
+.timer-laps { width: min(560px, 100%); margin-top: 14px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-card-solid); text-align: left; }
+.timer-lap-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.timer-lap-head strong { font-size: 12px; }
+.timer-lap-head small { margin-left: 5px; color: var(--text-muted); font-size: 10px; font-weight: 400; }
+.timer-lap-head > div { display: flex; gap: 4px; }
+.timer-lap-list { max-height: min(16vh, 104px); overflow: auto; }
+.timer-lap-list table { width: 100%; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+.timer-lap-list th { color: var(--text-muted); font-weight: 400; }
+.timer-lap-list th, .timer-lap-list td { padding: 5px 7px; text-align: right; border-bottom: 1px solid var(--border-subtle); }
+.timer-lap-list th:first-child, .timer-lap-list td:first-child { text-align: left; }
+.timer-lap-pager { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 6px; color: var(--text-muted); font-size: 10px; }
+.timer-lap-message { margin: 8px 0 0; color: var(--accent); font-size: 11px; }
+.timer-mode-hint { margin: 8px 20px 0; color: var(--text-muted); font-size: 11px; }
+.focus-controls { flex-wrap: wrap; justify-content: center; }

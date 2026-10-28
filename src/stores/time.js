@@ -1,7 +1,8 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { persistDesktopValue } from '../services/desktop'
-import { createBatchedPersist } from '../services/persistence'
+import { createBatchedPersist, flushPendingPersistence } from '../services/persistence'
+import { createTimerLap, normalizeTimerLaps } from '../services/timerLaps'
 
 const STORAGE_KEY = 'cytime.time-state.v1'
 
@@ -15,7 +16,9 @@ export const useTimeStore = defineStore('time', () => {
   const selectedTimerId = ref(null)
   const clockOffset = ref(0)
   let tickHandle
+  let runtimeCheckpointAt = 0
   const currentTime = () => Date.now() + clockOffset.value
+  const monotonicTime = () => typeof performance === 'undefined' ? Date.now() : performance.now()
 
   const runningCountdowns = computed(() => countdowns.value.filter(task => task.status === 'running'))
   const runningTimers = computed(() => timers.value.filter(task => task.status === 'running'))
@@ -43,6 +46,7 @@ export const useTimeStore = defineStore('time', () => {
       })
       // Runtime timers cannot accumulate while the page is closed.
       timers.value.forEach(timer => {
+        timer.laps = normalizeTimerLaps(timer.laps)
         if (timer.mode === 'runtime' && timer.status === 'running') timer.status = 'paused'
       })
     } catch {
@@ -68,19 +72,38 @@ export const useTimeStore = defineStore('time', () => {
         changed = true
       }
     })
+    if (monotonicTime() - runtimeCheckpointAt >= 15000) {
+      runtimeCheckpointAt = monotonicTime()
+      for (const task of timers.value) {
+        if (task.mode !== 'runtime' || task.status !== 'running') continue
+        task.elapsed = timerElapsed(task)
+        task.startedAt = now.value
+        changed = true
+      }
+    }
     if (changed) persist()
   }
 
   function start() {
     if (tickHandle) return
     hydrate()
+    runtimeCheckpointAt = monotonicTime()
     tick()
     tickHandle = window.setInterval(tick, 250)
+    window.addEventListener('pagehide', onPageHide, { capture: true })
   }
 
   function stop() {
     if (tickHandle) window.clearInterval(tickHandle)
     tickHandle = undefined
+    window.removeEventListener('pagehide', onPageHide, { capture: true })
+    pauseRuntimeTimers()
+    flushPendingPersistence()
+  }
+
+  function onPageHide() {
+    pauseRuntimeTimers()
+    flushPendingPersistence()
   }
 
   function sync() {
@@ -103,7 +126,7 @@ export const useTimeStore = defineStore('time', () => {
 
   function pauseCountdown(task) {
     if (task.status !== 'running') return
-    task.pausedRemaining = Math.max(0, task.targetAt - now.value)
+    task.pausedRemaining = Math.max(0, task.targetAt - currentTime())
     task.status = 'paused'
     persist()
   }
@@ -138,7 +161,7 @@ export const useTimeStore = defineStore('time', () => {
   }
 
   function addTimer(label, mode = 'absolute') {
-    const task = { id: makeId('timer'), label: label || '未命名计时', mode, status: 'running', elapsed: 0, startedAt: currentTime(), createdAt: currentTime() }
+    const task = { id: makeId('timer'), label: label || '未命名计时', mode, status: 'running', elapsed: 0, startedAt: currentTime(), createdAt: currentTime(), laps: [] }
     timers.value.unshift(task)
     selectedTimerId.value = task.id
     persist()
@@ -151,7 +174,7 @@ export const useTimeStore = defineStore('time', () => {
   }
 
   function pauseTimer(task) {
-    task.elapsed = timerElapsed(task)
+    task.elapsed = timerElapsed(task, currentTime())
     task.status = 'paused'
     persist()
   }
@@ -164,7 +187,7 @@ export const useTimeStore = defineStore('time', () => {
   }
 
   function stopTimer(task) {
-    task.elapsed = timerElapsed(task)
+    task.elapsed = timerElapsed(task, currentTime())
     task.status = 'stopped'
     persist()
   }
@@ -173,6 +196,7 @@ export const useTimeStore = defineStore('time', () => {
     task.elapsed = 0
     task.startedAt = currentTime()
     task.status = 'paused'
+    task.laps = []
     persist()
   }
 
@@ -182,11 +206,28 @@ export const useTimeStore = defineStore('time', () => {
     persist()
   }
 
+  function addTimerLap(task) {
+    if (!task || !['running', 'paused'].includes(task.status)) return null
+    task.laps ||= []
+    const at = currentTime()
+    const lap = createTimerLap(task.laps, timerElapsed(task, at), at)
+    if (!lap) return null
+    task.laps.push(lap)
+    persist()
+    return lap
+  }
+
+  function removeLastTimerLap(task) {
+    if (!task?.laps?.length) return
+    task.laps.pop()
+    persist()
+  }
+
   function pauseRuntimeTimers() {
     let changed = false
     timers.value.forEach(task => {
       if (task.mode === 'runtime' && task.status === 'running') {
-        task.elapsed = timerElapsed(task)
+        task.elapsed = timerElapsed(task, currentTime())
         task.status = 'paused'
         changed = true
       }
@@ -202,5 +243,5 @@ export const useTimeStore = defineStore('time', () => {
     selectedTimerId.value = task?.id || null
   }
 
-  return { now, clockOffset, countdowns, timers, selectedCountdownId, selectedTimerId, runningCountdowns, runningTimers, activeCountdowns, activeTimers, start, stop, sync, setClockOffset, addCountdown, pauseCountdown, resumeCountdown, stopCountdown, resetCountdown, removeCountdown, addTimer, timerElapsed, pauseTimer, resumeTimer, stopTimer, resetTimer, removeTimer, pauseRuntimeTimers, selectCountdown, selectTimer }
+  return { now, clockOffset, countdowns, timers, selectedCountdownId, selectedTimerId, runningCountdowns, runningTimers, activeCountdowns, activeTimers, start, stop, sync, setClockOffset, addCountdown, pauseCountdown, resumeCountdown, stopCountdown, resetCountdown, removeCountdown, addTimer, timerElapsed, pauseTimer, resumeTimer, stopTimer, resetTimer, removeTimer, addTimerLap, removeLastTimerLap, pauseRuntimeTimers, selectCountdown, selectTimer }
 })
