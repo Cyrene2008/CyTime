@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useContentStore } from '../stores/content'
 import { localDateStr, dateAdd, countOccurrences, occurrenceIndex, eligiblePool, resolveRosterDay, rosterApplies, dutyStats } from '../services/duty'
 import { parseRosterFile, serializeRosterFile } from '../utils/dutyRoster'
@@ -8,6 +8,7 @@ defineProps({ draft: { type: Object, required: true } })
 
 const contentStore = useContentStore()
 const duty = computed(() => contentStore.content.duty)
+const membersById = computed(() => new Map(duty.value.members.map(member => [member.id, member])))
 
 const tabs = [
   { value: 'members', label: '成员名单' },
@@ -26,7 +27,7 @@ function genderLabel(value) {
   return value === 'female' ? '女' : value === 'male' ? '男' : '未设置'
 }
 function memberName(memberId) {
-  return duty.value.members.find(member => member.id === memberId)?.name || '—'
+  return membersById.value.get(memberId)?.name || '—'
 }
 function lineNames(line) {
   return line.memberIds.length ? line.memberIds.map(memberName).join('、') : '待指定'
@@ -209,6 +210,7 @@ const previewRows = computed(() => {
 
 const editingDate = ref('')
 const editLines = ref([])
+const expandedEditChoreId = ref('')
 const extraName = ref('')
 
 function loadLines(dateStr) {
@@ -216,6 +218,7 @@ function loadLines(dateStr) {
   if (!roster) return
   const fresh = resolveRosterDay(duty.value, roster, dateStr, localDateStr())
   editLines.value = fresh.lines.map(line => ({ choreId: line.choreId, name: line.name, memberIds: [...line.memberIds], extra: Boolean(line.extra) }))
+  expandedEditChoreId.value = ''
 }
 function openEditor(row) {
   editingDate.value = row.date
@@ -225,6 +228,11 @@ function openEditor(row) {
 function closeEditor() {
   editingDate.value = ''
   editLines.value = []
+  expandedEditChoreId.value = ''
+  extraName.value = ''
+}
+function toggleEditLine(line) {
+  expandedEditChoreId.value = expandedEditChoreId.value === line.choreId ? '' : line.choreId
 }
 function saveEditor() {
   const roster = previewRoster.value
@@ -239,12 +247,15 @@ function toggleEditMember(line, memberId) {
 }
 function removeEditLine(line) {
   editLines.value = editLines.value.filter(item => item !== line)
+  if (expandedEditChoreId.value === line.choreId) expandedEditChoreId.value = ''
   saveEditor()
 }
 function addExtraLine() {
   const name = extraName.value.trim()
   if (!name) return
-  editLines.value.push({ choreId: `extra-${Date.now()}`, name, memberIds: [], extra: true })
+  const line = { choreId: `extra-${Date.now()}`, name, memberIds: [], extra: true }
+  editLines.value.push(line)
+  expandedEditChoreId.value = line.choreId
   extraName.value = ''
   saveEditor()
 }
@@ -285,6 +296,11 @@ function clearAnchor(dateStr) {
   if (!roster) return
   contentStore.clearRosterAnchor(roster, dateStr)
 }
+
+watch([previewRosterValue, tab], () => {
+  closeEditor()
+  calibratingDate.value = ''
+})
 
 // ---- 次数统计
 const statsRows = computed(() => {
@@ -486,10 +502,17 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
           <p v-if="!row.lines.length" class="empty-inline">该名单还没有任务。</p>
         </div>
         <div v-if="editingDate === row.date" class="duty-editor">
+          <p class="duty-hint">点击需要调整的任务展开人员名单，点选即保存。</p>
           <div v-for="line in editLines" :key="line.choreId" class="duty-editor-line">
-            <strong>{{ line.name }}<em v-if="line.extra" class="duty-flag">临时</em><button v-if="line.extra" type="button" class="icon-text-button icon-only" title="删除临时任务" aria-label="删除临时任务" @click="removeEditLine(line)"><FluentIcon icon="delete-20-regular" :width="13" /></button></strong>
-            <div class="category-chips duty-chip-row">
-              <button v-for="member in duty.members" :key="member.id" type="button" class="category-chip" :class="{ active: line.memberIds.includes(member.id) }" @click="toggleEditMember(line, member.id)">{{ member.name }}</button>
+            <div class="duty-editor-line-head">
+              <button type="button" class="duty-editor-toggle" :aria-expanded="expandedEditChoreId === line.choreId" :aria-controls="`duty-edit-${row.date}-${line.choreId}`" @click="toggleEditLine(line)">
+                <FluentIcon :icon="expandedEditChoreId === line.choreId ? 'chevron-down-16-regular' : 'chevron-right-16-regular'" :width="14" />
+                <span class="duty-editor-copy"><strong>{{ line.name }}<em v-if="line.extra" class="duty-flag">临时</em></strong><small>已选 {{ line.memberIds.length }} 人 · {{ lineNames(line) }}</small></span>
+              </button>
+              <button v-if="line.extra" type="button" class="icon-text-button icon-only" title="删除临时任务" aria-label="删除临时任务" @click="removeEditLine(line)"><FluentIcon icon="delete-20-regular" :width="13" /></button>
+            </div>
+            <div v-if="expandedEditChoreId === line.choreId" :id="`duty-edit-${row.date}-${line.choreId}`" class="category-chips duty-chip-row">
+              <button v-for="member in duty.members" :key="member.id" type="button" class="category-chip" :class="{ active: line.memberIds.includes(member.id) }" :aria-pressed="line.memberIds.includes(member.id)" @click="toggleEditMember(line, member.id)">{{ member.name }}</button>
             </div>
           </div>
           <div class="inline-form duty-extra-form">

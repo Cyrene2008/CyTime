@@ -538,6 +538,12 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .duty-editor { display: grid; gap: 12px; padding: 11px; border: 1px dashed var(--accent); border-radius: 6px; background: color-mix(in srgb, var(--accent), transparent 94%); }
 .duty-editor-line { display: grid; gap: 6px; }
 .duty-editor-line strong { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-primary); }
+.duty-editor-line-head { display: flex; align-items: center; gap: 8px; }
+.duty-editor-toggle { display: flex; align-items: center; flex: 1; gap: 8px; min-width: 0; padding: 4px 0; border: 0; color: var(--text-secondary); background: transparent; text-align: left; cursor: pointer; }
+.duty-editor-toggle:hover { color: var(--accent); }
+.duty-editor-toggle > .fluent-icon { flex-shrink: 0; }
+.duty-editor-copy { display: grid; gap: 4px; min-width: 0; }
+.duty-editor-copy small { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .duty-extra-form { flex-wrap: wrap; }
 .duty-bar { display: block; width: 90px; height: 6px; border-radius: 999px; background: var(--bg-hover); overflow: hidden; flex-shrink: 0; }
 .duty-bar i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
