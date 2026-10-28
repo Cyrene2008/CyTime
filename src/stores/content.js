@@ -4,6 +4,7 @@ import { persistDesktopValue } from '../services/desktop'
 import { createBatchedPersist } from '../services/persistence'
 import { localDateStr, countOccurrences } from '../services/duty'
 import { sortMembersPinyin } from '../utils/dutyRoster'
+import { mergeSchedule } from '../services/schedule'
 import quoteData from '../data/quotes.jsonc'
 
 const STORAGE_KEY = 'cytime.content.v1'
@@ -153,6 +154,12 @@ export const useContentStore = defineStore('content', () => {
   function removeLesson(lesson) {
     content.schedule = content.schedule.filter(item => item.id !== lesson.id)
     persist()
+  }
+  function importSchedule(lessons, replace = false) {
+    const previous = content.schedule.length
+    content.schedule = mergeSchedule(content.schedule, lessons, replace, () => id('lesson'))
+    persist()
+    return replace ? content.schedule.length : content.schedule.length - previous
   }
   function addHomework(item) {
     if (!item.content?.trim()) return
@@ -389,5 +396,5 @@ export const useContentStore = defineStore('content', () => {
   }
 
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, setHomeworkSubjectPresets, saveHomeworkTemplate, clearHomeworkTemplate, updateNotepad }
+  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, importSchedule, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, setHomeworkSubjectPresets, saveHomeworkTemplate, clearHomeworkTemplate, updateNotepad }
 })

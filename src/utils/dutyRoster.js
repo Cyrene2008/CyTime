@@ -1,3 +1,5 @@
+import { parseCsvRows, serializeCsv } from './csv.js'
+
 const CSV_HEADERS = ['名单名称', '名单ID', '中文名', '英文名', '性别', '小组名称', '小组英文名', '小组ID', '人员UUID', '白名单']
 
 const textDecoder = new TextDecoder('utf-8')
@@ -19,35 +21,6 @@ export function normalizeGender(value) {
 
 function normalizeHeader(value) {
   return String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '')
-}
-
-function parseCsvRows(content) {
-  const rows = []
-  let row = []
-  let cell = ''
-  let quoted = false
-  for (let index = 0; index < content.length; index++) {
-    const character = content[index]
-    if (quoted) {
-      if (character === '"' && content[index + 1] === '"') {
-        cell += '"'
-        index++
-      } else if (character === '"') quoted = false
-      else cell += character
-    } else if (character === '"') quoted = true
-    else if (character === ',') { row.push(cell); cell = '' }
-    else if (character === '\n' || character === '\r') {
-      if (character === '\r' && content[index + 1] === '\n') index++
-      row.push(cell)
-      if (row.some(value => String(value).trim() !== '')) rows.push(row)
-      row = []
-      cell = ''
-    } else cell += character
-  }
-  if (quoted) throw new Error('CSV 中存在未闭合的引号')
-  row.push(cell)
-  if (row.some(value => String(value).trim() !== '')) rows.push(row)
-  return rows
 }
 
 const NAME_KEYS = ['中文名', '姓名', '名称', 'chinesename', 'name', 'cn']
@@ -145,11 +118,6 @@ export async function parseRosterFile(name, input) {
   return parseRosterText(text, baseName(name))
 }
 
-function csvCell(value) {
-  const text = value === null || value === undefined ? '' : String(value)
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-}
-
 export function serializeRosterFile(members, format = 'csv', listName = '值日名单') {
   if (format === 'json') {
     return JSON.stringify({
@@ -169,7 +137,7 @@ export function serializeRosterFile(members, format = 'csv', listName = '值日�
   for (const member of members) {
     rows.push([listName, '', member.name, member.enName || '', member.gender === 'female' ? '女' : member.gender === 'male' ? '男' : '', '', '', '', member.uuid || '', ''])
   }
-  return `\uFEFF${rows.map(row => row.map(csvCell).join(',')).join('\r\n')}`
+  return serializeCsv(rows)
 }
 
 let collator
