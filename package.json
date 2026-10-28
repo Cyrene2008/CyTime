@@ -10,6 +10,7 @@
     "dev": "vite",
     "prebuild": "node scripts/sync-quote-data.mjs",
     "build": "vite build",
+    "test": "node --test",
     "sync:quotes": "node scripts/sync-quote-data.mjs",
     "preview": "vite preview",
     "tauri": "tauri",

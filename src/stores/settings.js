@@ -1,6 +1,7 @@
 import { reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { persistDesktopValue } from '../services/desktop'
+import { createBatchedPersist } from '../services/persistence'
 
 const STORAGE_KEY = 'cytime.settings.v2'
 
@@ -169,10 +170,10 @@ export const useSettingsStore = defineStore('settings', () => {
   const settings = reactive(readStoredSettings())
   const examModeActive = ref(false)
 
-  function persist() {
+  const persist = createBatchedPersist(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
     persistDesktopValue(STORAGE_KEY, settings).catch(() => {})
-  }
+  })
 
   function update(patch) {
     Object.assign(settings, patch)

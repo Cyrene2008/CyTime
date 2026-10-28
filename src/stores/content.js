@@ -1,6 +1,7 @@
 import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { persistDesktopValue } from '../services/desktop'
+import { createBatchedPersist } from '../services/persistence'
 import { localDateStr, countOccurrences } from '../services/duty'
 import { sortMembersPinyin } from '../utils/dutyRoster'
 import quoteData from '../data/quotes.jsonc'
@@ -98,7 +99,10 @@ const id = prefix => `${prefix}-${Date.now()}-${Math.random().toString(36).slice
 export const useContentStore = defineStore('content', () => {
   const content = reactive(readContent())
 
-  function persist() { localStorage.setItem(STORAGE_KEY, JSON.stringify(content)); persistDesktopValue(STORAGE_KEY, content).catch(() => {}) }
+  const persist = createBatchedPersist(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(content))
+    persistDesktopValue(STORAGE_KEY, content).catch(() => {})
+  })
   function addImportantDay(name, date, recurring = false) {
     if (!name || !date) return
     content.importantDays.push({ id: id('day'), name, date, recurring })
