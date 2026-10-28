@@ -1,7 +1,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { useContentStore } from '../stores/content'
-import { localDateStr, dateAdd, countOccurrences, occurrenceIndex, eligiblePool, resolveRosterDay, rosterApplies, dutyStats } from '../services/duty'
+import { localDateStr, dateAdd, countOccurrences, occurrenceIndex, resolveRosterDay, rosterApplies, dutyStats } from '../services/duty'
 import { parseRosterFile, serializeRosterFile } from '../utils/dutyRoster'
 
 defineProps({ draft: { type: Object, required: true } })
@@ -221,6 +221,7 @@ function loadLines(dateStr) {
   expandedEditChoreId.value = ''
 }
 function openEditor(row) {
+  calibratingDate.value = ''
   editingDate.value = row.date
   extraName.value = ''
   loadLines(row.date)
@@ -268,33 +269,41 @@ function restoreDay() {
 
 // ---- 定次（按天校准索引）
 const calibratingDate = ref('')
+const calibrateOccurrence = ref(1)
+const calibrateIndex = computed(() => {
+  const occurrence = Number(calibrateOccurrence.value)
+  return Number.isSafeInteger(occurrence) && occurrence >= 1 ? occurrence - 1 : null
+})
 function toggleCalibrate(row) {
-  calibratingDate.value = calibratingDate.value === row.date ? '' : row.date
+  if (calibratingDate.value === row.date) {
+    calibratingDate.value = ''
+    return
+  }
+  closeEditor()
+  calibratingDate.value = row.date
+  calibrateOccurrence.value = Math.max(1, row.occurrence + 1)
 }
-const calibrateCandidates = computed(() => {
+function adjustCalibrate(delta) {
+  if (calibrateIndex.value === null) return
+  const occurrence = Number(calibrateOccurrence.value) + delta
+  if (Number.isSafeInteger(occurrence) && occurrence >= 1) calibrateOccurrence.value = occurrence
+}
+const calibrateLines = computed(() => {
   const roster = previewRoster.value
   const date = calibratingDate.value
-  if (!roster || !date) return []
-  const poolSize = roster.chores.length
-    ? Math.max(...roster.chores.map(chore => eligiblePool(duty.value, roster, chore).length))
-    : duty.value.members.length
-  const size = Math.max(1, Math.min(poolSize || 1, 44))
-  const today = localDateStr()
-  const out = []
-  for (let index = 0; index < size; index++) {
-    out.push({ index, lines: resolveRosterDay(duty.value, roster, date, today, index).lines })
-  }
-  return out
+  if (!roster || !date || calibrateIndex.value === null) return []
+  return resolveRosterDay(duty.value, roster, date, localDateStr(), calibrateIndex.value).lines
 })
-function applyAnchor(row, index) {
+function applyAnchor(row) {
   const roster = previewRoster.value
-  if (!roster) return
-  contentStore.setRosterAnchor(roster, row.date, index)
+  if (!roster || calibrateIndex.value === null) return
+  contentStore.setRosterAnchor(roster, row.date, calibrateIndex.value)
 }
 function clearAnchor(dateStr) {
   const roster = previewRoster.value
   if (!roster) return
   contentStore.clearRosterAnchor(roster, dateStr)
+  calibrateOccurrence.value = Math.max(1, occurrenceIndex(duty.value, roster, dateStr) + 1)
 }
 
 watch([previewRosterValue, tab], () => {
@@ -523,11 +532,20 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
           </div>
         </div>
         <div v-if="calibratingDate === row.date" class="duty-editor duty-calibrate">
-          <p class="duty-hint">把这天定为第 N 次起始：只影响这天及之后的自动轮换，不改已过去的记录；未启动软件的日子不计数，不会自己往后跑。</p>
-          <div v-for="candidate in calibrateCandidates" :key="candidate.index" class="duty-candidate" :class="{ active: row.anchored && candidate.index === row.occurrence }" @click="applyAnchor(row, candidate.index)">
-            <strong>第 {{ candidate.index + 1 }} 次</strong>
-            <span v-for="line in candidate.lines" :key="line.choreId">{{ line.name }}：{{ lineNames(line) }}</span>
+          <p :id="`duty-calibrate-hint-${row.date}`" class="duty-hint">输入轮换次数（从 1 开始）即可预览，点击应用才保存；从这天起校准自动轮换，直到下一处定次。此前的记录不变。</p>
+          <form class="duty-calibrate-controls" @submit.prevent="applyAnchor(row)">
+            <label class="duty-calibrate-number">定为第<input v-model="calibrateOccurrence" type="number" min="1" :max="Number.MAX_SAFE_INTEGER" step="1" inputmode="numeric" aria-label="轮换次数" :aria-invalid="calibrateIndex === null" :aria-describedby="`duty-calibrate-hint-${row.date}`" />次</label>
+            <button type="button" class="subtle-button" :disabled="calibrateIndex === null || calibrateIndex === 0" @click="adjustCalibrate(-1)">上一次</button>
+            <button type="button" class="subtle-button" :disabled="calibrateIndex === null || Number(calibrateOccurrence) === Number.MAX_SAFE_INTEGER" @click="adjustCalibrate(1)">下一次</button>
+            <button type="submit" class="save-button" :disabled="calibrateIndex === null || (row.anchored && row.occurrence === calibrateIndex)">{{ row.anchored && row.occurrence === calibrateIndex ? '已应用' : '应用定次' }}</button>
+          </form>
+          <p v-if="calibrateIndex === null" class="field-error" role="alert">请输入有效的正整数。</p>
+          <div v-else class="duty-calibrate-preview" role="region" aria-label="定次人员预览">
+            <strong>第 {{ Number(calibrateOccurrence) }} 次 · 人员预览</strong>
+            <div v-for="line in calibrateLines" :key="line.choreId" class="duty-line" :class="{ overridden: line.overridden }"><span class="duty-line-chore">{{ line.name }}<em v-if="line.overridden">手动</em></span><span class="duty-line-names">{{ lineNames(line) }}</span></div>
+            <p v-if="!calibrateLines.length" class="empty-inline">该名单还没有任务。</p>
           </div>
+          <p v-if="row.overridden" class="duty-hint">本日手动指定的人员会保留，定次只调整自动轮换。</p>
           <div class="inline-form">
             <button v-if="row.anchored" type="button" class="subtle-button" @click="clearAnchor(row.date)"><FluentIcon icon="arrow-reset-20-regular" :width="14" /> 清除定次（恢复自动）</button>
             <button type="button" class="subtle-button" @click="calibratingDate = ''"><FluentIcon icon="checkmark-20-regular" :width="14" /> 完成</button>
