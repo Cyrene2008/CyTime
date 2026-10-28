@@ -648,3 +648,15 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 .template-actions .micro-button:hover { border-color: var(--accent); }
 .template-actions .micro-primary { border-color: transparent; color: var(--text-on-accent); background: var(--accent); }
 .template-actions .micro-primary:hover { border-color: transparent; color: var(--text-on-accent); background: var(--accent-hover); }
+
+.backup-panel .data-actions, .setting-card > .data-actions { margin-top: 14px; }
+.backup-preview { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
+.backup-file { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.backup-file small { color: var(--text-muted); font-size: 11px; }
+.backup-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.backup-group { display: flex; align-items: center; gap: 9px; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 6px; cursor: pointer; }
+.backup-group input { accent-color: var(--accent); }
+.backup-group > span { display: grid; gap: 4px; }
+.backup-group strong { font-size: 12px; }
+.backup-group small { color: var(--text-muted); font-size: 10px; }
+@media (max-width: 620px) { .backup-groups { grid-template-columns: 1fr; } }

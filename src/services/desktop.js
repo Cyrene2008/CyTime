@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { ref } from 'vue'
 
 const desktopState = ref(false)
+let storageQueue = Promise.resolve()
 
 function hasTauriInternals() {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__ || window.__TAURI_METADATA__)
@@ -96,7 +97,16 @@ export async function getDesktopStartupArgs() {
 }
 
 export function persistDesktopValue(key, value) {
-  return isDesktop() ? invoke('storage_write', { key, value }) : Promise.resolve()
+  if (!isDesktop()) return Promise.resolve()
+  const write = storageQueue.then(() => invoke('storage_write', { key, value }))
+  storageQueue = write.catch(() => {})
+  return write
+}
+
+export async function applyDesktopStorage(values, removeKeys = [], clear = false) {
+  if (!isDesktop()) return
+  await storageQueue
+  await invoke('storage_apply', { values, removeKeys, clear })
 }
 
 export async function saveDesktopFile(path, content) {
@@ -104,21 +114,36 @@ export async function saveDesktopFile(path, content) {
 }
 
 export async function chooseAndSaveFile(content, fileName = 'cytime-backup.json') {
+  const extension = fileName.split('.').pop()?.toLowerCase() || 'txt'
+  const mime = extension === 'json' ? 'application/json' : extension === 'csv' ? 'text/csv' : 'text/plain'
   if (isDesktop()) {
     const { save } = await import('@tauri-apps/plugin-dialog')
-    const path = await save({ defaultPath: fileName, filters: [{ name: 'JSON', extensions: ['json'] }] })
+    const path = await save({ defaultPath: fileName, filters: [{ name: extension.toUpperCase(), extensions: [extension] }] })
     if (!path) return false
     await saveDesktopFile(path, content)
     return true
   }
   if (window.showSaveFilePicker) {
-    const handle = await window.showSaveFilePicker({ suggestedName: fileName, types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }] })
-    const writable = await handle.createWritable()
-    await writable.write(content)
-    await writable.close()
-    return true
+    try {
+      const handle = await window.showSaveFilePicker({ suggestedName: fileName, types: [{ description: extension.toUpperCase(), accept: { [mime]: [`.${extension}`] } }] })
+      const writable = await handle.createWritable()
+      await writable.write(content)
+      await writable.close()
+      return true
+    } catch (error) {
+      if (error?.name === 'AbortError') return false
+      if (error?.name !== 'SecurityError' && error?.name !== 'NotAllowedError') throw error
+    }
   }
-  return false
+  const url = URL.createObjectURL(new Blob([content], { type: `${mime};charset=utf-8` }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  return true
 }
 
 export async function checkDesktopUpdate() {

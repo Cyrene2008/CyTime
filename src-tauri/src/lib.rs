@@ -14,6 +14,8 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri_plugin_deep_link::DeepLinkExt;
 
+mod storage;
+
 struct PendingUris(Arc<Mutex<Vec<String>>>);
 
 fn is_homework_manage_uri(_uri: &str) -> bool {
@@ -130,18 +132,33 @@ fn read_storage_inner(app: &AppHandle) -> Result<Value, String> {
 }
 
 #[tauri::command]
-fn storage_read_all(app: AppHandle) -> Result<Value, String> {
-    let _guard = STORAGE_LOCK.lock().map_err(|error| error.to_string())?;
-    read_storage_inner(&app)
+async fn storage_read_all(app: AppHandle) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = STORAGE_LOCK.lock().map_err(|error| error.to_string())?;
+        read_storage_inner(&app)
+    }).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-fn storage_write(app: AppHandle, key: String, value: Value) -> Result<(), String> {
-    let _guard = STORAGE_LOCK.lock().map_err(|error| error.to_string())?;
-    let path = storage_path(&app)?;
-    let mut all = read_storage_inner(&app)?;
-    all.as_object_mut().ok_or_else(|| "storage is not an object".to_string())?.insert(key, value);
-    write_json_file(&path, &all)
+async fn storage_write(app: AppHandle, key: String, value: Value) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = STORAGE_LOCK.lock().map_err(|error| error.to_string())?;
+        let path = storage_path(&app)?;
+        let mut all = read_storage_inner(&app)?;
+        all.as_object_mut().ok_or_else(|| "storage is not an object".to_string())?.insert(key, value);
+        write_json_file(&path, &all)
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn storage_apply(app: AppHandle, values: Value, remove_keys: Vec<String>, clear: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = STORAGE_LOCK.lock().map_err(|error| error.to_string())?;
+        let path = storage_path(&app)?;
+        let all = read_storage_inner(&app)?;
+        let next = storage::apply_changes(&all, &values, &remove_keys, clear)?;
+        write_json_file(&path, &next)
+    }).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -449,7 +466,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![application_platform, desktop_startup_args, desktop_pending_uris, storage_read_all, storage_write, desktop_write_file, desktop_check_update, desktop_download_update, desktop_set_uri_registration, desktop_window_mode, desktop_set_autostart, desktop_fetch_json, desktop_fetch_network_time, desktop_window_action, desktop_open_homework])
+        .invoke_handler(tauri::generate_handler![application_platform, desktop_startup_args, desktop_pending_uris, storage_read_all, storage_write, storage_apply, desktop_write_file, desktop_check_update, desktop_download_update, desktop_set_uri_registration, desktop_window_mode, desktop_set_autostart, desktop_fetch_json, desktop_fetch_network_time, desktop_window_action, desktop_open_homework])
         .setup(move |app| {
             #[cfg(target_os = "windows")]
             {

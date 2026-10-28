@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { persistDesktopValue } from '../services/desktop'
+import { createBatchedPersist } from '../services/persistence'
 
 const STORAGE_KEY = 'cytime.time-state.v1'
 
@@ -21,11 +22,11 @@ export const useTimeStore = defineStore('time', () => {
   const activeCountdowns = computed(() => countdowns.value.filter(task => ['running', 'paused'].includes(task.status)))
   const activeTimers = computed(() => timers.value.filter(task => ['running', 'paused'].includes(task.status)))
 
-  function persist() {
+  const persist = createBatchedPersist(() => {
     const value = { countdowns: countdowns.value, timers: timers.value }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
     persistDesktopValue(STORAGE_KEY, value).catch(() => {})
-  }
+  })
 
   function hydrate() {
     try {
