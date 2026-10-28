@@ -1,8 +1,11 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { useContentStore } from '../stores/content'
-import { localDateStr, dateAdd, countOccurrences, occurrenceIndex, resolveRosterDay, rosterApplies, dutyStats } from '../services/duty'
+import { localDateStr, dateAdd, isDateString, countOccurrences, occurrenceIndex, createOccurrenceResolver, nextRosterDate, resolveRosterDay, rosterApplies, dutyStats } from '../services/duty'
 import { parseRosterFile, serializeRosterFile } from '../utils/dutyRoster'
+import { chooseAndSaveFile } from '../services/desktop'
+import { serializeDutyPreview, serializeDutyStats } from '../services/dutyExport'
+import { fileNamePart } from '../utils/csv'
 
 defineProps({ draft: { type: Object, required: true } })
 
@@ -164,6 +167,10 @@ function shiftAnchor(roster, delta) {
 // ---- 排班预览与单日调整
 const previewRosterId = ref('')
 const statsRosterId = ref('')
+const previewStart = ref(localDateStr())
+const previewCount = ref(14)
+const exportMessage = ref('')
+const previewCountOptions = [14, 28, 56].map(value => ({ value, label: `${value} 次排班` }))
 const rosterOptions = computed(() => duty.value.rosters.map(roster => ({ value: roster.id, label: roster.name })))
 const previewRoster = computed(() => duty.value.rosters.find(roster => roster.id === previewRosterId.value) || duty.value.rosters[0] || null)
 const statsRoster = computed(() => duty.value.rosters.find(roster => roster.id === statsRosterId.value) || duty.value.rosters[0] || null)
@@ -176,37 +183,35 @@ const statsRosterValue = computed({
   set: value => { statsRosterId.value = value }
 })
 
-function rosterNextDate(roster, from, direction) {
-  const today = localDateStr()
-  let date = dateAdd(from, direction)
-  let guard = 400
-  while (date && guard--) {
-    if (rosterApplies(duty.value, roster, date, today)) return date
-    date = dateAdd(date, direction)
-  }
-  return null
-}
-
 const previewRows = computed(() => {
   const roster = previewRoster.value
-  if (!roster) return []
+  if (!roster || roster.enabled === false || !isDateString(previewStart.value)) return []
   const today = localDateStr()
-  let date = today
-  if (!rosterApplies(duty.value, roster, date, today)) date = rosterNextDate(roster, date, 1)
-  const rows = []
-  let guard = 40
-  while (date && rows.length < 14 && guard--) {
-    if (!rosterApplies(duty.value, roster, date, today)) break
-    rows.push({
-      date,
-      ...resolveRosterDay(duty.value, roster, date, today),
-      overridden: Boolean(duty.value.overrides[date]?.[roster.id]?.length),
-      anchored: Boolean(duty.value.anchors?.[roster.id]?.[date] !== undefined)
-    })
-    date = rosterNextDate(roster, date, 1)
+  let date = previewStart.value
+  if (!rosterApplies(duty.value, roster, date, today)) date = nextRosterDate(duty.value, roster, date, 1, today)
+  const dates = []
+  const count = Math.max(1, Math.min(56, Number(previewCount.value) || 14))
+  while (date && dates.length < count) {
+    dates.push(date)
+    date = nextRosterDate(duty.value, roster, date, 1, today)
   }
-  return rows
+  const resolver = createOccurrenceResolver(duty.value, roster, today)
+  return dates.map(date => ({
+    date,
+    ...resolveRosterDay(duty.value, roster, date, today, resolver.indexAt(date)),
+    overridden: Boolean(duty.value.overrides[date]?.[roster.id]?.length),
+    anchored: Boolean(duty.value.anchors?.[roster.id]?.[date] !== undefined)
+  }))
 })
+
+async function exportPreview() {
+  const roster = previewRoster.value
+  if (!roster || !previewRows.value.length) return
+  try {
+    const saved = await chooseAndSaveFile(serializeDutyPreview(roster, previewRows.value, duty.value.members), `${fileNamePart(roster.name)}-${previewStart.value}-排班.csv`)
+    exportMessage.value = saved ? '排班已导出' : '已取消导出'
+  } catch { exportMessage.value = '导出失败，请重试' }
+}
 
 const editingDate = ref('')
 const editLines = ref([])
@@ -306,13 +311,14 @@ function clearAnchor(dateStr) {
   calibrateOccurrence.value = Math.max(1, occurrenceIndex(duty.value, roster, dateStr) + 1)
 }
 
-watch([previewRosterValue, tab], () => {
+watch([previewRosterValue, previewStart, previewCount, tab], () => {
   closeEditor()
   calibratingDate.value = ''
+  exportMessage.value = ''
 })
 
 // ---- 次数统计
-const statsRows = computed(() => {
+const allStatsRows = computed(() => {
   const roster = statsRoster.value
   if (!roster) return []
   const from = duty.value.schoolDays[0] || localDateStr()
@@ -322,11 +328,19 @@ const statsRows = computed(() => {
       const entry = stats.get(member.id)
       return { member, total: entry?.total || 0, chores: entry?.chores || {} }
     })
-    .filter(row => row.total > 0)
     .sort((a, b) => b.total - a.total)
 })
+const statsRows = computed(() => allStatsRows.value.filter(row => row.total > 0))
 const statsMax = computed(() => Math.max(1, ...statsRows.value.map(row => row.total)))
 const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.schoolDays[0]} ~ ${localDateStr()} · 共 ${duty.value.schoolDays.length} 个在校日` : '暂无在校日记录')
+
+async function exportStats() {
+  if (!statsRoster.value || !statsRows.value.length) return
+  try {
+    const saved = await chooseAndSaveFile(serializeDutyStats(statsRoster.value, allStatsRows.value), `${fileNamePart(statsRoster.value.name)}-${localDateStr()}-次数统计.csv`)
+    exportMessage.value = saved ? '统计已导出' : '已取消导出'
+  } catch { exportMessage.value = '导出失败，请重试' }
+}
 </script>
 
 <template>
@@ -485,9 +499,11 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
 
   <section v-if="tab === 'preview'" class="setting-card">
     <div class="card-toolbar">
-      <div><h3>轮换预览与单日调整</h3><p>未来 14 次排班；「改」可对某天直接指定，手动安排只影响该天，不打乱后续轮换。</p></div>
+      <div><h3>排班与调整</h3><p>查看排班，或调整某一天的人员。</p></div>
       <FluentSelect v-if="rosterOptions.length" v-model="previewRosterValue" :options="rosterOptions" aria-label="选择名单" />
     </div>
+    <div v-if="previewRoster" class="duty-preview-toolbar"><label>开始日期<FluentDatePicker v-model="previewStart" placeholder="选择日期" /></label><FluentSelect v-model="previewCount" :options="previewCountOptions" aria-label="排班数量" /><button type="button" class="subtle-button" :disabled="!previewRows.some(row => row.lines.length)" @click="exportPreview"><FluentIcon icon="arrow-download-20-regular" :width="14" />导出排班</button></div>
+    <p v-if="exportMessage" class="inline-status" role="status">{{ exportMessage }}</p>
     <div v-if="previewRoster" class="managed-list duty-preview-list">
       <div v-for="row in previewRows" :key="row.date" class="duty-preview-item" :class="{ editing: editingDate === row.date }">
         <div class="duty-preview-head">
@@ -562,6 +578,8 @@ const statsRange = computed(() => duty.value.schoolDays.length ? `${duty.value.s
       <div><h3>次数统计</h3><p>范围：{{ statsRange }}</p></div>
       <FluentSelect v-if="rosterOptions.length" v-model="statsRosterValue" :options="rosterOptions" aria-label="选择名单" />
     </div>
+    <div class="data-actions duty-stats-actions"><button type="button" class="subtle-button" :disabled="!statsRows.length" @click="exportStats"><FluentIcon icon="arrow-download-20-regular" :width="14" />导出统计</button></div>
+    <p v-if="exportMessage" class="inline-status" role="status">{{ exportMessage }}</p>
     <div v-if="statsRows.length" class="managed-list">
       <div v-for="row in statsRows" :key="row.member.id" class="managed-item">
         <span><strong>{{ row.member.name }}</strong><small>{{ row.total }} 次 · {{ choreSummary(row.chores) }}</small></span>

@@ -1,21 +1,31 @@
 export function localDateStr(date = new Date()) {
-  const year = date.getFullYear()
+  const year = String(date.getFullYear()).padStart(4, '0')
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
 
+function parseDate(dateStr) {
+  if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const date = new Date(0)
+  date.setFullYear(year, month - 1, day)
+  date.setHours(0, 0, 0, 0)
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null
+}
+
+export function isDateString(dateStr) { return Boolean(parseDate(dateStr)) }
+
 export function weekdayIndex(dateStr) {
-  const [year, month, day] = String(dateStr).split('-').map(Number)
-  if (!year || !month || !day) return -1
-  return new Date(year, month - 1, day).getDay()
+  return parseDate(dateStr)?.getDay() ?? -1
 }
 
 export function dateAdd(dateStr, delta) {
-  const [year, month, day] = String(dateStr).split('-').map(Number)
-  if (!year || !month || !day) return null
-  const date = new Date(year, month - 1, day + delta)
-  return localDateStr(date)
+  const date = parseDate(dateStr)
+  if (!date || !Number.isFinite(Number(delta))) return null
+  date.setDate(date.getDate() + Math.trunc(Number(delta)))
+  const result = localDateStr(date)
+  return isDateString(result) ? result : null
 }
 
 function mod(value, divisor) {
@@ -23,11 +33,22 @@ function mod(value, divisor) {
   return ((value % divisor) + divisor) % divisor
 }
 
+function integer(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.max(Number.MIN_SAFE_INTEGER, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(number))) : 0
+}
+
+export function normalizeSlots(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.max(1, Math.min(Number.MAX_SAFE_INTEGER, Math.round(number))) : 1
+}
+
 function rulesPass(duty, roster, dateStr) {
   if (duty.holidays?.includes(dateStr)) return false
   const weekday = weekdayIndex(dateStr)
+  if (weekday < 0) return false
   if (duty.skipWeekends && (weekday === 0 || weekday === 6)) return false
-  if (roster.weekdays?.length && !roster.weekdays.includes(weekday)) return false
+  if (roster.weekdays?.length && !roster.weekdays.includes?.(weekday)) return false
   return true
 }
 
@@ -38,14 +59,34 @@ export function rosterApplies(duty, roster, dateStr, today = localDateStr()) {
   return true
 }
 
-export function countOccurrences(duty, roster, dateStr, today = localDateStr()) {
-  let count = duty.schoolDays.filter(day => day <= dateStr && day <= today && rulesPass(duty, roster, day)).length
-  if (dateStr > today) {
-    for (let day = dateAdd(today, 1); day && day <= dateStr; day = dateAdd(day, 1)) {
-      if (rulesPass(duty, roster, day)) count++
-    }
+function countRulesInRange(duty, roster, from, to) {
+  const start = parseDate(from)
+  const end = parseDate(to)
+  if (!start || !end || from > to) return 0
+  const selected = roster.weekdays?.length
+    ? Array.isArray(roster.weekdays) ? roster.weekdays : typeof roster.weekdays === 'string' ? [...roster.weekdays].filter(value => /^[0-6]$/.test(value)).map(Number) : []
+    : [0, 1, 2, 3, 4, 5, 6]
+  const weekdays = new Set(selected.filter(day => Number.isInteger(day) && day >= 0 && day <= 6))
+  if (duty.skipWeekends) { weekdays.delete(0); weekdays.delete(6) }
+  const ordinal = date => {
+    const utc = new Date(0)
+    utc.setUTCFullYear(date.getFullYear(), date.getMonth(), date.getDate())
+    utc.setUTCHours(0, 0, 0, 0)
+    return Math.floor(utc.getTime() / 86400000)
+  }
+  const days = ordinal(end) - ordinal(start) + 1
+  let count = Math.floor(days / 7) * weekdays.size
+  for (let index = 0; index < days % 7; index++) if (weekdays.has((start.getDay() + index) % 7)) count++
+  for (const holiday of new Set(duty.holidays || [])) {
+    if (holiday >= from && holiday <= to && weekdays.has(weekdayIndex(holiday))) count--
   }
   return count
+}
+
+export function countOccurrences(duty, roster, dateStr, today = localDateStr()) {
+  if (!isDateString(dateStr) || !isDateString(today)) return 0
+  const count = [...new Set(duty.schoolDays)].filter(day => day <= dateStr && day <= today && rulesPass(duty, roster, day)).length
+  return count + (dateStr > today ? countRulesInRange(duty, roster, dateAdd(today, 1), dateStr) : 0)
 }
 
 function latestAnchor(duty, roster, dateStr) {
@@ -53,44 +94,81 @@ function latestAnchor(duty, roster, dateStr) {
   if (!anchors) return null
   let bestDate = null
   for (const date of Object.keys(anchors)) {
-    if (date <= dateStr && (bestDate === null || date > bestDate)) bestDate = date
+    if (isDateString(date) && date <= dateStr && (bestDate === null || date > bestDate)) bestDate = date
   }
   if (bestDate === null) return null
-  return { date: bestDate, index: Math.max(0, Number(anchors[bestDate]) || 0) }
+  return { date: bestDate, index: Math.max(0, integer(anchors[bestDate])) }
 }
 
 function countBetween(duty, roster, from, to, today) {
   if (!from || from > to) return 0
   let count = 0
-  for (const day of duty.schoolDays) {
+  for (const day of new Set(duty.schoolDays)) {
     if (day >= from && day <= to && day <= today && rulesPass(duty, roster, day)) count++
   }
-  if (to > today) {
-    for (let day = dateAdd(today, 1); day && day <= to; day = dateAdd(day, 1)) {
-      if (day >= from && rulesPass(duty, roster, day)) count++
-    }
-  }
+  if (to > today) count += countRulesInRange(duty, roster, from > today ? from : dateAdd(today, 1), to)
   return count
 }
 
 export function occurrenceIndex(duty, roster, dateStr, today = localDateStr()) {
+  if (!isDateString(dateStr)) return -1
   const anchor = latestAnchor(duty, roster, dateStr)
   if (anchor) return anchor.index + countBetween(duty, roster, dateAdd(anchor.date, 1), dateStr, today)
-  return countOccurrences(duty, roster, dateStr, today) - 1 + (roster.offset || 0)
+  return countOccurrences(duty, roster, dateStr, today) - 1 + integer(roster.offset)
+}
+
+function upperBound(dates, target) {
+  let low = 0
+  let high = dates.length
+  while (low < high) {
+    const middle = (low + high) >>> 1
+    if (dates[middle] <= target) low = middle + 1
+    else high = middle
+  }
+  return low
+}
+
+export function createOccurrenceResolver(duty, roster, today = localDateStr()) {
+  const dates = [...new Set(duty.schoolDays)].filter(day => day <= today && rulesPass(duty, roster, day)).sort()
+  const anchors = duty.anchors?.[roster.id] || {}
+  const anchorDates = Object.keys(anchors).filter(isDateString).sort()
+  const countThrough = date => upperBound(dates, date) + (date > today ? countRulesInRange(duty, roster, dateAdd(today, 1), date) : 0)
+  return {
+    dates,
+    indexAt(date) {
+      if (!isDateString(date)) return -1
+      const anchorDate = anchorDates[upperBound(anchorDates, date) - 1]
+      return anchorDate
+        ? Math.max(0, integer(anchors[anchorDate])) + countThrough(date) - countThrough(anchorDate)
+        : countThrough(date) - 1 + integer(roster.offset)
+    }
+  }
 }
 
 export function applicableDate(duty, dateStr, today = localDateStr()) {
   return (duty.rosters || []).some(roster => rosterApplies(duty, roster, dateStr, today))
 }
 
-export function nextDutyDate(duty, from, direction, today = localDateStr()) {
+export function nextRosterDate(duty, roster, from, direction, today = localDateStr()) {
+  if (!isDateString(from) || ![1, -1].includes(direction) || roster.enabled === false) return null
+  if (direction > 0 && from < today) {
+    const next = [...new Set(duty.schoolDays)].filter(day => day > from && day <= today && rulesPass(duty, roster, day)).sort()[0]
+    if (next) return next
+    from = today
+  }
   let guard = 400
   let date = dateAdd(from, direction)
-  while (date && guard--) {
-    if (applicableDate(duty, date, today)) return date
+  while (date && date > today && guard--) {
+    if (rulesPass(duty, roster, date)) return date
     date = dateAdd(date, direction)
   }
+  if (direction < 0) return [...new Set(duty.schoolDays)].filter(day => day < from && day <= today && rulesPass(duty, roster, day)).sort().at(-1) || null
   return null
+}
+
+export function nextDutyDate(duty, from, direction, today = localDateStr()) {
+  const dates = (duty.rosters || []).map(roster => nextRosterDate(duty, roster, from, direction, today)).filter(Boolean).sort()
+  return (direction < 0 ? dates.at(-1) : dates[0]) || null
 }
 
 export function eligiblePool(duty, roster, chore) {
@@ -106,7 +184,7 @@ export function resolveRosterDay(duty, roster, dateStr, today = localDateStr(), 
   const manual = roster.mode === 'manual'
   const occurrence = manual ? 0 : forcedOccurrence === null || forcedOccurrence === undefined
     ? occurrenceIndex(duty, roster, dateStr, today)
-    : Math.max(0, forcedOccurrence)
+    : integer(forcedOccurrence)
   const overrides = duty.overrides?.[dateStr]?.[roster.id] || []
   const used = new Set()
   const lines = []
@@ -121,9 +199,9 @@ export function resolveRosterDay(duty, roster, dateStr, today = localDateStr(), 
       lines.push({ choreId: chore.id, name: chore.name, memberIds: [], overridden: false, extra: false })
       continue
     }
-    const slots = Math.max(1, Number(chore.slots) || 1)
+    const slots = normalizeSlots(chore.slots)
     const pool = eligiblePool(duty, roster, chore)
-    const start = mod(occurrence * slots + (chore.phase || 0), pool.length)
+    const start = mod(mod(occurrence, pool.length) * mod(slots, pool.length) + mod(integer(chore.phase), pool.length), pool.length)
     const picked = []
     for (let index = 0; index < pool.length && picked.length < slots; index++) {
       const member = pool[(start + index) % pool.length]
@@ -150,10 +228,10 @@ export function resolveDay(duty, dateStr, today = localDateStr()) {
 export function dutyStats(duty, roster, from, to = localDateStr()) {
   const stats = new Map(duty.members.map(member => [member.id, { total: 0, chores: {} }]))
   const today = localDateStr()
-  let guard = 400
-  for (let day = from; day && day <= to && guard--; day = dateAdd(day, 1)) {
-    if (!rosterApplies(duty, roster, day, today)) continue
-    const { lines } = resolveRosterDay(duty, roster, day, today)
+  if (roster.enabled === false || !isDateString(from) || !isDateString(to) || from > to) return stats
+  const resolver = createOccurrenceResolver(duty, roster, today)
+  const countDay = day => {
+    const { lines } = resolveRosterDay(duty, roster, day, today, resolver.indexAt(day))
     for (const line of lines) {
       for (const memberId of line.memberIds) {
         const entry = stats.get(memberId)
@@ -161,6 +239,12 @@ export function dutyStats(duty, roster, from, to = localDateStr()) {
         entry.total++
         entry.chores[line.name] = (entry.chores[line.name] || 0) + 1
       }
+    }
+  }
+  for (const day of resolver.dates) if (day >= from && day <= to) countDay(day)
+  if (to > today) {
+    for (let day = from > today ? from : dateAdd(today, 1); day && day <= to; day = dateAdd(day, 1)) {
+      if (rulesPass(duty, roster, day)) countDay(day)
     }
   }
   return stats

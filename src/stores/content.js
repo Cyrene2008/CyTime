@@ -2,7 +2,7 @@ import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { persistDesktopValue } from '../services/desktop'
 import { createBatchedPersist } from '../services/persistence'
-import { localDateStr, countOccurrences } from '../services/duty'
+import { localDateStr, countOccurrences, isDateString, normalizeSlots } from '../services/duty'
 import { sortMembersPinyin } from '../utils/dutyRoster'
 import { mergeSchedule } from '../services/schedule'
 import quoteData from '../data/quotes.jsonc'
@@ -46,6 +46,11 @@ function normalizeDuty(saved) {
   if (!duty.overrides || typeof duty.overrides !== 'object') duty.overrides = {}
   if (!duty.anchors || typeof duty.anchors !== 'object') duty.anchors = {}
   if (!Array.isArray(duty.holidays)) duty.holidays = []
+  duty.schoolDays = [...new Set(duty.schoolDays)].filter(isDateString).sort()
+  duty.holidays = [...new Set(duty.holidays)].filter(isDateString).sort()
+  for (const roster of duty.rosters) {
+    for (const chore of Array.isArray(roster?.chores) ? roster.chores : []) if (chore && typeof chore === 'object') chore.slots = normalizeSlots(chore.slots)
+  }
   return duty
 }
 
@@ -312,7 +317,7 @@ export const useContentStore = defineStore('content', () => {
     const entry = {
       id: id('chore'),
       name: String(chore?.name || '').trim() || '新任务',
-      slots: Math.max(1, Number(chore?.slots) || 1),
+      slots: normalizeSlots(chore?.slots),
       genderRule: ['no-female', 'no-male'].includes(chore?.genderRule) ? chore.genderRule : 'any',
       phase: Number(chore?.phase) || 0,
       noRepeat: chore?.noRepeat !== false,
@@ -324,6 +329,7 @@ export const useContentStore = defineStore('content', () => {
   }
   function updateChore(chore, patch) {
     Object.assign(chore, patch)
+    if (patch.slots !== undefined) chore.slots = normalizeSlots(patch.slots)
     persist()
   }
   function removeChore(roster, chore) {
