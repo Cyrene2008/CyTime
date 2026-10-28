@@ -6,7 +6,7 @@ export function useTypewriter(source, options = {}) {
   let timer
   let generation = 0
 
-  watch([source, () => options.animation?.(), () => options.typeSpeed?.()], ([value]) => {
+  watch([source, () => options.animation?.(), () => options.typeSpeed?.(), () => options.active?.() ?? true], ([value, , , active]) => {
     const target = String(value || '')
     const currentGeneration = ++generation
     window.clearTimeout(timer)
@@ -16,7 +16,7 @@ export function useTypewriter(source, options = {}) {
     const speedMap = { slow: 54, standard: 34, fast: 18 }
     const typeSpeed = speedMap[options.typeSpeed?.()] || 34
     const eraseSpeed = Math.max(12, Math.round(typeSpeed * 0.55))
-    if (animation !== 'typewriter') {
+    if (!active || animation !== 'typewriter' || displayed.value === target) {
       displayed.value = target
       isTyping.value = false
       return

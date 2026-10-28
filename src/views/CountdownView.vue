@@ -2,8 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import { useTimeStore } from '../stores/time'
 import { useDigitBox } from '../composables/useDigitBox'
+import { useDisplayTime } from '../composables/useDisplayTime'
 
 const timeStore = useTimeStore()
+const { now } = useDisplayTime()
 const label = ref('')
 const inputError = ref('')
 const settingsOpen = ref(false)
@@ -20,7 +22,7 @@ const task = computed(() => {
   if (selected?.status === 'completed') return selected
   return timeStore.countdowns.find(item => ['running', 'paused'].includes(item.status)) || null
 })
-const remaining = computed(() => task.value ? Math.max(0, task.value.status === 'paused' ? Math.ceil(task.value.pausedRemaining / 1000) : Math.ceil((task.value.targetAt - timeStore.now) / 1000)) : 0)
+const remaining = computed(() => task.value ? Math.max(0, task.value.status === 'paused' ? Math.ceil(task.value.pausedRemaining / 1000) : Math.ceil((task.value.targetAt - now.value) / 1000)) : 0)
 const isWarning = computed(() => Boolean(task.value?.status === 'running' && remaining.value > 0 && remaining.value <= 5))
 const isFinished = computed(() => task.value?.status === 'completed')
 const display = computed(() => formatDuration(task.value ? remaining.value : 0))

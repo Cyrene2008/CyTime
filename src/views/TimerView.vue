@@ -2,8 +2,10 @@
 import { computed, ref } from 'vue'
 import { useTimeStore } from '../stores/time'
 import { useDigitBox } from '../composables/useDigitBox'
+import { useDisplayTime } from '../composables/useDisplayTime'
 
 const timeStore = useTimeStore()
+const { now } = useDisplayTime()
 const label = ref('')
 const mode = ref('absolute')
 const modeOptions = [{ value: 'absolute', label: '绝对计时' }, { value: 'runtime', label: '运行时计时' }]
@@ -14,7 +16,7 @@ const task = computed(() => {
   return timeStore.timers.find(item => ['running', 'paused'].includes(item.status)) || null
 })
 const display = computed(() => {
-  const seconds = Math.max(0, Math.floor(task.value ? timeStore.timerElapsed(task.value) : 0))
+  const seconds = Math.max(0, Math.floor(task.value ? timeStore.timerElapsed(task.value, now.value) : 0))
   return [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), seconds % 60].map(value => String(value).padStart(2, '0')).join(':')
 })
 const clockRef = ref(null)

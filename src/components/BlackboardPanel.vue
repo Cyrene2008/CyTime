@@ -5,14 +5,16 @@ import { useSettingsStore } from '../stores/settings'
 import { useContentStore } from '../stores/content'
 import { formatDuration } from '../utils/time'
 import { localDateStr, resolveDay, resolveRosterDay, nextDutyDate } from '../services/duty'
+import { useDisplayTime } from '../composables/useDisplayTime'
 
 const timeStore = useTimeStore()
+const { now } = useDisplayTime()
 const settingsStore = useSettingsStore()
 const contentStore = useContentStore()
 const openSettings = inject('cytimeOpenSettings', null)
 
 const duty = computed(() => contentStore.content.duty)
-const realToday = computed(() => localDateStr(new Date(timeStore.now)))
+const realToday = computed(() => localDateStr(new Date(now.value)))
 const pinnedDate = ref(null)
 const displayDate = computed(() => pinnedDate.value || realToday.value)
 const atToday = computed(() => !pinnedDate.value || pinnedDate.value === realToday.value)
@@ -54,14 +56,14 @@ const side = computed(() => {
 })
 
 function countdownRemaining(task) {
-  return task?.status === 'paused' ? Math.ceil(task.pausedRemaining / 1000) : Math.max(0, Math.ceil((task.targetAt - timeStore.now) / 1000))
+  return task?.status === 'paused' ? Math.ceil(task.pausedRemaining / 1000) : Math.max(0, Math.ceil((task.targetAt - now.value) / 1000))
 }
 const tasks = computed(() => [
   ...timeStore.activeCountdowns.map(task => ({ key: `cd-${task.id}`, kind: 'countdown', task, to: '/countdown', dot: 'pink' })),
   ...timeStore.activeTimers.map(task => ({ key: `tm-${task.id}`, kind: 'timer', task, to: '/timer', dot: 'green' }))
 ])
 function taskTime(item) {
-  const seconds = item.kind === 'countdown' ? countdownRemaining(item.task) : Math.floor(timeStore.timerElapsed(item.task))
+  const seconds = item.kind === 'countdown' ? countdownRemaining(item.task) : Math.floor(timeStore.timerElapsed(item.task, now.value))
   return formatDuration(seconds)
 }
 function selectTask(item) {

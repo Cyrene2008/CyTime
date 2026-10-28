@@ -144,9 +144,9 @@ export const useTimeStore = defineStore('time', () => {
     return task
   }
 
-  function timerElapsed(task) {
+  function timerElapsed(task, at = now.value) {
     if (task.status !== 'running') return task.elapsed
-    return task.elapsed + Math.max(0, (now.value - task.startedAt) / 1000)
+    return task.elapsed + Math.max(0, (at - task.startedAt) / 1000)
   }
 
   function pauseTimer(task) {

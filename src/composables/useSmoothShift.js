@@ -4,9 +4,12 @@ import { onBeforeUpdate, onUpdated } from 'vue'
 // 使用独立的 translate 属性，避免覆盖元素自身的 transform（如数字字体的 scaleX）。
 export function useSmoothShift(getContainer, isEnabled = () => true) {
   let before = new Map()
-  const reduceMotion = () => typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+  const motionQuery = typeof window === 'undefined' ? null : window.matchMedia?.('(prefers-reduced-motion: reduce)')
+  const enabled = () => isEnabled() && !motionQuery?.matches
 
   onBeforeUpdate(() => {
+    before.clear()
+    if (!enabled()) return
     const container = getContainer()
     if (!container) return
     const map = new Map()
@@ -15,15 +18,9 @@ export function useSmoothShift(getContainer, isEnabled = () => true) {
   })
 
   onUpdated(() => {
+    if (!before.size || !enabled()) return
     const container = getContainer()
     if (!container) return
-    if (!isEnabled() || reduceMotion()) {
-      for (const child of [...container.children]) {
-        child.style.transition = 'none'
-        child.style.translate = 'none'
-      }
-      return
-    }
     const children = [...container.children]
     for (const child of children) {
       child.style.transition = 'none'

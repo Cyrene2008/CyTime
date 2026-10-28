@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { searchXiaomiCities, locateWeatherCity } from '../services/weather'
 import { fetchQuoteCategories, fetchQuoteStats, quoteApiEndpoints, readQuoteFile } from '../services/quotes'
 import { getPlatform } from '../services/platform'
@@ -10,9 +10,9 @@ import { useContentStore } from '../stores/content'
 import { useWeatherStore } from '../stores/weather'
 import { useTimeStore } from '../stores/time'
 import { FILING_NAME, FILING_URL, QUOTE_API_DOCS } from '../config/branding'
-import QuoteSourcePanel from '../components/QuoteSourcePanel.vue'
-import LocalQuoteSourcePanel from '../components/LocalQuoteSourcePanel.vue'
-import DutySettingsPanel from '../components/DutySettingsPanel.vue'
+const QuoteSourcePanel = defineAsyncComponent(() => import('../components/QuoteSourcePanel.vue'))
+const LocalQuoteSourcePanel = defineAsyncComponent(() => import('../components/LocalQuoteSourcePanel.vue'))
+const DutySettingsPanel = defineAsyncComponent(() => import('../components/DutySettingsPanel.vue'))
 
 const emit = defineEmits(['close'])
 const props = defineProps({ desktopAvailable: { type: Boolean, default: false }, initialPane: { type: String, default: '' } })
@@ -25,6 +25,7 @@ const dockRef = ref(null)
 const navIndicator = ref(null)
 const indicatorGeom = ref(null)
 let navSyncFrame = 0
+let navAnimation = null
 const draft = reactive({
   ...settingsStore.settings,
   quoteLocalSources: JSON.parse(JSON.stringify(settingsStore.settings.quoteLocalSources || {})),
@@ -114,37 +115,30 @@ function syncNavIndicator(animate = false) {
   const dock = dockRef.value
   const indicator = navIndicator.value
   if (!dock || !indicator) return
+  navAnimation?.cancel()
+  navAnimation = null
   const target = activeNavEl()
   if (!target) { indicator.style.opacity = '0'; indicatorGeom.value = null; return }
   const dockRect = dock.getBoundingClientRect()
   const rect = target.getBoundingClientRect()
   const scaleY = dock.offsetHeight ? (dockRect.height / dock.offsetHeight) : 1
-  const top = (rect.top - dockRect.top) / (scaleY || 1) + (rect.height / (scaleY || 1) - 20) / 2
+  const top = (rect.top - dockRect.top) / (scaleY || 1) + dock.scrollTop + (rect.height / (scaleY || 1) - 20) / 2
   const next = { top, height: 20 }
   const prev = indicatorGeom.value
+  const transform = geometry => `translateY(${geometry.top}px) scaleY(${geometry.height / 20})`
   indicator.style.opacity = '1'
-  if (!animate || !prev || typeof indicator.animate !== 'function') {
-    indicator.style.top = `${next.top}px`
-    indicator.style.height = `${next.height}px`
-    indicatorGeom.value = next
-    return
-  }
+  indicator.style.transform = transform(next)
+  indicatorGeom.value = next
+  if (!animate || !prev || prev.top === next.top || typeof indicator.animate !== 'function' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
   const goingDown = next.top + next.height / 2 >= prev.top + prev.height / 2
   const stretchTop = goingDown ? prev.top : next.top
   const stretchBottom = goingDown ? next.top + next.height : prev.top + prev.height
   const stretchHeight = Math.max(next.height, stretchBottom - stretchTop)
-  indicator.style.top = `${prev.top}px`
-  indicator.style.height = `${prev.height}px`
-  const anim = indicator.animate([
-    { top: `${prev.top}px`, height: `${prev.height}px` },
-    { top: `${stretchTop}px`, height: `${stretchHeight}px`, offset: 0.52 },
-    { top: `${next.top}px`, height: `${next.height}px` }
-  ], { duration: 260, easing: 'cubic-bezier(.1, .9, .2, 1)' })
-  anim.addEventListener('finish', () => {
-    indicator.style.top = `${next.top}px`
-    indicator.style.height = `${next.height}px`
-  }, { once: true })
-  indicatorGeom.value = next
+  navAnimation = indicator.animate([
+    { transform: transform(prev) },
+    { transform: transform({ top: stretchTop, height: stretchHeight }), offset: 0.52 },
+    { transform: transform(next) }
+  ], { duration: 200, easing: 'cubic-bezier(.1, .9, .2, 1)' })
 }
 function queueNavSync(animate = false) {
   if (navSyncFrame) cancelAnimationFrame(navSyncFrame)
@@ -299,16 +293,18 @@ async function autoLocate() {
 
 watch(() => draft.weatherCityName, () => { if (citySearchOpen.value) scheduleCitySearch() })
 watch([activePane, activeGroup], () => queueNavSync(true))
-onMounted(async () => {
-  platformLabel.value = String(await getPlatform()).toUpperCase()
-  weatherStore.refresh(draft.weatherCityNum)
-  refreshQuoteCategories()
+watch(activePane, pane => {
+  if (pane === 'weather' || pane === 'location') weatherStore.refresh(draft.weatherCityNum)
+}, { immediate: true })
+onMounted(() => {
   queueNavSync(false)
+  getPlatform().then(platform => { platformLabel.value = String(platform).toUpperCase() }).catch(() => {})
 })
 onBeforeUnmount(() => {
   window.clearTimeout(citySearchTimer)
   citySearchController?.abort()
   if (navSyncFrame) cancelAnimationFrame(navSyncFrame)
+  navAnimation?.cancel()
 })
 </script>
 
@@ -330,7 +326,7 @@ onBeforeUnmount(() => {
         <div class="settings-dock-footer">CyTime 昔时时钟 · v{{ appVersion }}<template v-if="buildId"> · build {{ buildId }}</template></div>
       </aside>
 
-      <div class="settings-main"><div class="settings-scroll"><Transition name="settings-pane" mode="out-in"><div :key="activePane" class="settings-pane-content">
+      <div class="settings-main"><div class="settings-scroll"><div :key="activePane" class="settings-pane-content">
         <template v-if="activePane === 'startup'"><span class="settings-kicker">基础功能</span><h2>启动页面</h2><p class="settings-lead">设置刷新或下次启动时默认进入的页面。</p><section class="setting-card"><div class="setting-card-heading"><FluentIcon icon="clock-20-regular" :width="20" /><div><h3>启动时默认页面</h3><p>设置应用打开后直接进入的模式。</p></div></div><div class="segmented-control segmented-three"><button v-for="item in startupModeOptions" :key="item.value" type="button" :class="{ active: draft.startupMode === item.value }" @click="draft.startupMode = item.value">{{ item.label }}</button></div><label v-if="isDesktop()" class="setting-select-label startup-window-select">启动窗口模式<FluentSelect v-model="draft.startupWindowMode" :options="[{ value: 'mini', label: 'Mini 960 × 720' }, { value: 'normal', label: '常规窗口' }, { value: 'max', label: '最大化窗口' }, { value: 'full', label: '全屏' }]" /></label></section><section class="setting-card setting-row"><div><h3>保持屏幕常亮</h3><p>前台显示时请求 Screen Wake Lock，后台由系统处理。</p></div><button type="button" class="switch" :class="{ on: draft.preventSleep }" :aria-pressed="draft.preventSleep" @click="draft.preventSleep = !draft.preventSleep"><i></i></button></section><section class="setting-card setting-row"><div><h3>空闲返回时钟</h3><p>非 Mini 模式下 30 秒无操作时，自动切换到时钟页面。</p></div><button type="button" class="switch" :class="{ on: draft.idleReturnTime }" :aria-pressed="draft.idleReturnTime" @click="draft.idleReturnTime = !draft.idleReturnTime"><i></i></button></section><section v-if="isDesktop()" class="setting-card"><div class="setting-row"><div><h3>开机自启动</h3><p>登录 Windows 后按所选方式启动并唤醒已有实例。</p><small v-if="autostartMessage" class="inline-status">{{ autostartMessage }}</small></div><button type="button" class="switch" :class="{ on: draft.autostart }" :aria-pressed="draft.autostart" @click="toggleAutostart"><i></i></button></div><div v-if="draft.autostart" class="segmented-control segmented-two autostart-mode"><button type="button" :class="{ active: draft.autostartHidden }" @click="setAutostartHidden(true)">静默启动（仅托盘）</button><button type="button" :class="{ active: !draft.autostartHidden }" @click="setAutostartHidden(false)">显示主界面</button></div></section></template>
 
         <template v-else-if="activePane === 'display'"><span class="settings-kicker">基础功能</span><h2>显示内容</h2><p class="settings-lead">选择时钟页面显示的信息模块。</p><section class="setting-card"><div v-for="item in [{ key: 'showWeather', label: '天气', desc: '显示当前位置的天气概览' }, { key: 'showDayProgress', label: '每日进度', desc: '显示当天 24 小时进度' }, { key: 'showDate', label: '日期', desc: '显示当前日期和星期' }, { key: 'showLunar', label: '农历日期', desc: '在公历日期后显示农历' }, { key: 'showAlmanac', label: '黄历宜忌', desc: '显示当日宜/忌' }, { key: 'showQuote', label: '金句', desc: '显示本地或云端语录' }, { key: 'showClockSeconds', label: '显示秒数', desc: '在时间中显示秒' }, { key: 'showBlackboard', label: '小黑板', desc: '显示值日排班与计时挂件，自动放在作业板对侧' } ]" :key="item.key" class="setting-row"><div><h3>{{ item.label }}</h3><p>{{ item.desc }}</p></div><button type="button" class="switch" :class="{ on: draft[item.key] }" :aria-pressed="draft[item.key]" @click="draft[item.key] = !draft[item.key]"><i></i></button></div></section><section class="setting-card setting-row"><div><h3>作业板</h3><p>在时钟区域显示可操作的作业面板。</p></div><button type="button" class="switch" :class="{ on: draft.showHomework }" :aria-pressed="draft.showHomework" @click="draft.showHomework = !draft.showHomework"><i></i></button></section><section class="setting-card setting-row"><div><h3>课程提示</h3><p>在时钟区域显示当前或下一节课程。</p></div><button type="button" class="switch" :class="{ on: draft.showSchedule }" :aria-pressed="draft.showSchedule" @click="draft.showSchedule = !draft.showSchedule"><i></i></button></section></template>
@@ -362,7 +358,7 @@ onBeforeUnmount(() => {
         <template v-else-if="activePane === 'data'"><span class="settings-kicker">系统数据</span><h2>设置数据</h2><p class="settings-lead">本地任务、设置、语录、课程和作业均可备份。</p><section class="setting-card"><div class="data-actions"><button type="button" class="subtle-button" @click="downloadData">导出全部数据</button><button type="button" class="subtle-button" @click="importInput?.click()">导入备份</button><input ref="importInput" type="file" accept="application/json" hidden @change="importData" /><button type="button" class="subtle-button" @click="resetSettings">恢复默认设置</button><button type="button" class="subtle-button danger-button" @click="clearData">清除本地数据</button></div><p class="setting-copy">当前平台：{{ platformLabel }}。数据只保存在此设备。</p></section></template>
          <template v-else-if="activePane === 'about'"><span class="settings-kicker">关于</span><h2>项目信息</h2><p class="settings-lead">一款面向学生与教育场景的班级大屏时钟。</p><section class="setting-card about-card"><div class="about-hero"><img class="about-app-mark" src="/icon-192.svg" alt="CyTime" /><h3>CyTime 昔时时钟</h3><strong>v{{ appVersion }}<template v-if="buildId"> · build {{ buildId }}</template></strong><p>昔光涟涟，时不我待。</p></div><div class="about-credit-row"><div class="about-person"><img src="/avatars/Cyrene2008.png" alt="Cyrene2008" /><div><strong>Cyrene2008 <small>作者</small></strong><a class="project-link" href="https://github.com/Cyrene2008" target="_blank" rel="noreferrer">GitHub</a></div></div><div class="about-powered"><h3>Powered by VueFluentWidgets</h3><p>Fluent Design System for Vue · MIT License</p><p>Copyright © 2025-2026 Cyrene2008</p><a class="project-link" href="https://fluent.cyrene.hk" target="_blank" rel="noreferrer">VueFluentWidgets 官网</a></div></div><div class="about-friends"><h3>友链</h3><div class="about-friend"><div><strong>Cyreneの随机点名器</strong><p>班级随机点名 · 翻牌 · 公平平衡算法</p></div><div class="project-links"><a class="project-link" href="https://点名器.昔涟.cn" target="_blank" rel="noreferrer">官网</a><a class="project-link" href="https://web点名器.昔涟.cn" target="_blank" rel="noreferrer">在线版</a></div></div></div><div class="about-license"><strong>开源许可</strong><p>GNU General Public License v3.0</p><p>CyTime 源码与组件库信息可在对应仓库查看。</p><div class="project-links"><a class="project-link" href="https://github.com/Cyrene2008/CyTime" target="_blank" rel="noreferrer">CyTime 仓库</a><a class="project-link" href="https://github.com/Cyrene2008/VueFluentWidgets" target="_blank" rel="noreferrer">VueFluentWidgets</a><a v-if="FILING_NAME" class="project-link" :href="FILING_URL" target="_blank" rel="noreferrer">{{ FILING_NAME }}</a></div></div></section></template>
         <section v-if="activePane === 'startup' && isDesktop()" class="setting-card setting-row uri-setting"><div><h3>URI 注册</h3><p>允许其他程序通过 cytime:// 唤醒 CyTime 并执行受限操作。</p><small v-if="uriMessage" class="inline-status">{{ uriMessage }}</small></div><div class="uri-setting-actions"><button type="button" class="subtle-button" @click="uriHelpOpen = true"><FluentIcon icon="info-20-regular" :width="16" />使用说明</button><button type="button" class="switch" :class="{ on: draft.uriRegistration }" :aria-pressed="draft.uriRegistration" @click="toggleUriRegistration"><i></i></button></div></section>
-       </div></Transition></div><footer class="settings-actions"><span v-if="feedbackMessage" class="save-message">{{ feedbackMessage }}</span><button type="button" class="subtle-button action-button" @click="cancel"><FluentIcon icon="dismiss-20-regular" :width="15" /> 取消</button><button type="button" class="save-button action-button" @click="save"><FluentIcon icon="checkmark-20-regular" :width="15" /> 保存</button></footer><FluentToast ref="toastRef" /></div>
+       </div></div><footer class="settings-actions"><span v-if="feedbackMessage" class="save-message">{{ feedbackMessage }}</span><button type="button" class="subtle-button action-button" @click="cancel"><FluentIcon icon="dismiss-20-regular" :width="15" /> 取消</button><button type="button" class="save-button action-button" @click="save"><FluentIcon icon="checkmark-20-regular" :width="15" /> 保存</button></footer><FluentToast ref="toastRef" /></div>
     </div>
     <div v-if="uriHelpOpen" class="uri-help-layer" role="dialog" aria-modal="true" aria-label="URI 使用说明" @click.self="uriHelpOpen = false"><section class="uri-help-modal"><header><div><span class="settings-kicker">桌面端</span><h2>URI 使用说明</h2></div><button type="button" class="dialog-close" aria-label="关闭说明" @click="uriHelpOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></header><div class="uri-help-content"><p>启用 URI 注册后，系统会将 cytime:// 链接交给 CyTime 处理。URI 只控制主页面和主任务。</p><dl><dt>启动程序</dt><dd><code>cytime://</code></dd><dt>指定窗口模式</dt><dd><code>cytime://?mode=mini</code>、<code>normal</code>、<code>max</code> 或 <code>full</code></dd><dt>切换页面</dt><dd><code>cytime://page/time</code><br /><code>cytime://page/countdown</code><br /><code>cytime://page/timer</code></dd><dt>创建倒计时</dt><dd><code>cytime://countdown?target=20261101121500</code><br /><code>cytime://countdown?length=1800</code></dd><dt>控制主倒计时</dt><dd><code>cytime://task/countdown/pause</code><br /><code>cytime://task/countdown/continue</code><br /><code>cytime://task/countdown/stop</code></dd></dl></div><footer><button type="button" class="save-button" @click="uriHelpOpen = false">知道了</button></footer></section></div>
     <div v-if="quoteConfigOpen" class="uri-help-layer" role="dialog" aria-modal="true" aria-label="CyQuote 昔言 · 分类" @click.self="quoteConfigOpen = false"><section class="uri-help-modal quote-config-modal"><header><div><span class="settings-kicker">云端来源</span><h2>CyQuote 昔言 · 分类</h2></div><button type="button" class="dialog-close" aria-label="关闭分类配置" @click="quoteConfigOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></header><div class="uri-help-content"><p>选择要抽取的分类；选择「全部」时不附带 category 参数，由 API 从全部分类随机返回。</p><p class="setting-copy">API 说明页：<a class="project-link" :href="QUOTE_API_DOCS" target="_blank" rel="noreferrer">{{ QUOTE_API_DOCS }}</a></p><div class="setting-row quote-weight-toggle"><div><h3>首选接口</h3><p>默认优先 Cloudflare；请求失败时会自动切换到另一个接口。</p></div><FluentSelect v-model="draft.quoteApiEndpoint" :options="quoteEndpointOptions" aria-label="首选接口" /></div><div class="category-chips quote-config-chips"><button type="button" class="category-chip" :class="{ active: !draft.quoteApiCategories?.length }" @click="draft.quoteApiCategories = []">全部<small v-if="quoteTotal">· {{ quoteTotal }}</small></button><button v-for="category in quoteCategories" :key="category" type="button" class="category-chip" :class="{ active: draft.quoteApiCategories?.includes(category) }" @click="toggleQuoteCategory(category)">{{ category }}<small v-if="quoteCounts[category] !== undefined">· {{ quoteCounts[category] }}</small></button><span v-if="quoteCategoryLoading" class="quote-config-hint">正在获取分类…</span></div><div class="setting-row quote-weight-toggle"><div><h3>启用分类权重</h3><p>开启后每次仅按权重随机选择一个分类请求 API；关闭时按所选分类整体随机。</p></div><button type="button" class="switch" :class="{ on: draft.quoteApiCategoryWeightsEnabled }" :disabled="!draft.quoteApiCategories?.length" @click="toggleCategoryWeights"><i></i></button></div><div v-if="draft.quoteApiCategoryWeightsEnabled && draft.quoteApiCategories?.length" class="category-weight-list"><label v-for="category in draft.quoteApiCategories" :key="category" class="category-weight-row"><span>{{ category }}</span><input type="number" min="0" max="9999" :value="categoryWeight(category)" @input="setCategoryWeight(category, $event)" /></label></div></div><footer><button type="button" class="save-button" @click="quoteConfigOpen = false">完成</button></footer></section></div>

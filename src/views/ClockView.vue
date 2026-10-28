@@ -1,6 +1,5 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { useTimeStore } from '../stores/time'
 import { useSettingsStore } from '../stores/settings'
 import { useQuotesStore } from '../stores/quotes'
 import { useContentStore } from '../stores/content'
@@ -9,20 +8,22 @@ import { useTypewriter } from '../composables/useTypewriter'
 import { useDigitBox } from '../composables/useDigitBox'
 import { useAlmanac } from '../composables/useAlmanac'
 import { useSmoothShift } from '../composables/useSmoothShift'
+import { useDisplayTime } from '../composables/useDisplayTime'
 import HomeworkPanel from '../components/HomeworkPanel.vue'
 import BlackboardPanel from '../components/BlackboardPanel.vue'
 
-const timeStore = useTimeStore()
+const { active: stageActive, now } = useDisplayTime()
 const settingsStore = useSettingsStore()
 const quotesStore = useQuotesStore()
 const contentStore = useContentStore()
-const date = computed(() => new Date(timeStore.now))
+const displaySecond = computed(() => Math.floor(now.value / 1000))
+const date = computed(() => new Date(displaySecond.value * 1000))
 const clock = computed(() => formatClock(date.value, settingsStore.settings.showClockSeconds))
 const clockParts = computed(() => clock.value.split(':'))
 const clockRef = ref(null)
 useDigitBox(clockRef, [() => settingsStore.settings.fontFamily, () => settingsStore.settings.clockFontScale])
 const viewRef = ref(null)
-useSmoothShift(() => viewRef.value, () => !isTyping.value)
+useSmoothShift(() => viewRef.value, () => stageActive.value && !isTyping.value)
 const quoteRef = ref(null)
 
 function handleStageClick(event) {
@@ -34,7 +35,8 @@ function handleStageClick(event) {
   if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) return
   quotesStore.refresh()
 }
-const dateText = computed(() => `${formatDate(date.value)} ${new Intl.DateTimeFormat('zh-CN', { weekday: 'long' }).format(date.value)}`)
+const weekdayFormatter = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' })
+const dateText = computed(() => `${formatDate(date.value)} ${weekdayFormatter.format(date.value)}`)
 const { almanac } = useAlmanac(() => date.value)
 const almanacShort = (list, max = 4) => list.slice(0, max).join(' · ')
 const yiText = computed(() => almanac.value ? almanacShort(almanac.value.yi) : '')
@@ -43,16 +45,17 @@ const almanacTitle = computed(() => {
   if (!almanac.value) return ''
   return `${almanac.value.ganZhi} · 宜：${almanac.value.yi.join('、') || '无'} · 忌：${almanac.value.ji.join('、') || '无'}`
 })
-const lessonsToday = computed(() => contentStore.content.schedule.filter(item => item.weekday === date.value.getDay()).sort((a, b) => a.startAt.localeCompare(b.startAt)))
+const weekday = computed(() => date.value.getDay())
+const minute = computed(() => `${String(date.value.getHours()).padStart(2, '0')}:${String(date.value.getMinutes()).padStart(2, '0')}`)
+const lessonsToday = computed(() => contentStore.content.schedule.filter(item => item.weekday === weekday.value).sort((a, b) => a.startAt.localeCompare(b.startAt)))
 const currentLesson = computed(() => {
-  const now = `${String(date.value.getHours()).padStart(2, '0')}:${String(date.value.getMinutes()).padStart(2, '0')}`
-  return lessonsToday.value.find(item => item.startAt <= now && now < item.endAt)
+  return lessonsToday.value.find(item => item.startAt <= minute.value && minute.value < item.endAt)
 })
 const nextLesson = computed(() => {
-  const now = `${String(date.value.getHours()).padStart(2, '0')}:${String(date.value.getMinutes()).padStart(2, '0')}`
-  return lessonsToday.value.find(item => item.startAt > now)
+  return lessonsToday.value.find(item => item.startAt > minute.value)
 })
 const { value: typedQuote, isTyping } = useTypewriter(() => quotesStore.current, {
+  active: () => stageActive.value && settingsStore.settings.showQuote && !settingsStore.examModeActive,
   animation: () => settingsStore.settings.quoteAnimation,
   typeSpeed: () => settingsStore.settings.quoteTypeSpeed
 })

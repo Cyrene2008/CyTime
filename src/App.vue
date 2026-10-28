@@ -36,6 +36,7 @@ const desktopAutoStart = ref(false)
 const fullscreenActive = ref(false)
 const isHomeworkWindow = ref(false)
 const isSettings = computed(() => settingsOpen.value)
+provide('cytimeStageActive', computed(() => !isSettings.value))
 const purePromptOpen = ref(false)
 const purePromptSeconds = ref(10)
 const currentDate = computed(() => new Date(timeStore.now))
@@ -104,6 +105,7 @@ function updateTaskOverflow() {
 }
 
 function syncContentSafeTop() {
+  if (isSettings.value) return
   const shell = shellRef.value
   if (!shell) return
   const shellRect = shell.getBoundingClientRect()
@@ -126,6 +128,7 @@ function syncContentSafeTop() {
 }
 
 function updateViewPadding() {
+  if (isSettings.value) return
   const shell = shellRef.value
   if (!shell) return
   if (settingsStore.examModeActive) {
@@ -536,7 +539,7 @@ onMounted(async () => {
   })
   nextTick(observeSafeAreas)
   if (document.fonts?.ready) document.fonts.ready.then(() => updateViewPadding()).catch(() => {})
-  stopViewPaddingWatch = watch([() => Math.floor(timeStore.now / 1000), () => route.path], async () => {
+  stopViewPaddingWatch = watch([() => isSettings.value ? null : Math.floor(timeStore.now / 1000), () => route.path], async () => {
     await nextTick()
     updateViewPadding()
   })
@@ -593,7 +596,7 @@ onUnmounted(() => {
     <nav v-if="!isSettings" ref="navRef" class="mode-nav" aria-label="模式切换">
       <RouterLink v-for="item in navItems" :key="item.path" :to="item.path" :class="{ active: route.path === item.path }"><FluentIcon :icon="item.icon" :width="17" /><span>{{ item.label }}</span></RouterLink>
     </nav>
-    <main class="clock-stage" :class="{ 'is-settings-background': isSettings }"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><component :is="Component" /></Transition></RouterView></main>
+    <main v-show="!isSettings" class="clock-stage"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><component :is="Component" /></Transition></RouterView></main>
     <template v-if="!isSettings">
       <footer class="clock-footer">
         <button type="button" class="footer-action footer-settings" aria-label="设置" @click="openSettings()"><FluentIcon icon="settings-20-regular" :width="19" /></button>
@@ -607,7 +610,7 @@ onUnmounted(() => {
       <Transition name="notice"><div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div></Transition>
       <Transition name="pure-prompt"><div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净考试模式提示"><div class="pure-prompt-card"><h2>是否进入纯净模式(考试模式)</h2><p>该模式下仅显示当前时间，隐藏其他内容。可以点击界面上的退出纯净/考试模式按钮退出，也可点击进入纯净/考试模式按钮进入。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">不了 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div></Transition>
     </template>
-    <Transition name="settings-overlay"><div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" :initial-pane="settingsPane" @close="closeSettings" /></div></Transition>
+    <div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" :initial-pane="settingsPane" @close="closeSettings" /></div>
     <div v-if="homeworkManageOpen" class="homework-float-layer" role="dialog" aria-modal="true" aria-label="悬浮作业板">
       <HomeworkPanel manage-float @close="homeworkManageOpen = false" />
     </div>

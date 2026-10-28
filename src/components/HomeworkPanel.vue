@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useContentStore } from '../stores/content'
 import { useSettingsStore } from '../stores/settings'
 import { chooseAndSaveFile } from '../services/desktop'
@@ -11,6 +11,8 @@ const emit = defineEmits(['close'])
 
 const contentStore = useContentStore()
 const settingsStore = useSettingsStore()
+const stageActive = inject('cytimeStageActive', ref(true))
+const visuallyActive = computed(() => props.manageFloat || stageActive.value)
 
 const CUSTOM_SUBJECT = '__custom__'
 const DEFAULT_SUBJECT_PRESETS = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '政治', '地理', '其他']
@@ -271,6 +273,7 @@ function setPage(next) {
 }
 
 function measurePageSize() {
+  if (!visuallyActive.value) return
   const panel = panelRef.value
   const list = listRef.value
   if (!panel || !list || !panel.offsetHeight || pageAnimating) return
@@ -323,7 +326,7 @@ function measurePageSize() {
 
 let measureHandle = 0
 function scheduleMeasure() {
-  if (measureHandle) return
+  if (!visuallyActive.value || measureHandle) return
   measureHandle = requestAnimationFrame(() => { measureHandle = 0; measurePageSize() })
 }
 
@@ -483,6 +486,7 @@ function adjustFont(amount) {
 
 function startRotateTimer() {
   window.clearInterval(rotateTimer)
+  if (!visuallyActive.value) return
   const interval = (settingsStore.settings.homeworkPageInterval || 10) * 1000
   rotateTimer = window.setInterval(() => {
     if (editorOpen.value || historyOpen.value || pageCount.value <= 1) return
@@ -493,11 +497,29 @@ function startRotateTimer() {
 let safeObserver = null
 function observeSafeArea() {
   if (typeof ResizeObserver === 'undefined') return
+  safeObserver?.disconnect()
   safeObserver = new ResizeObserver(() => scheduleMeasure())
   const dock = document.querySelector('.status-dock')
   const footer = document.querySelector('.clock-footer')
   if (dock) safeObserver.observe(dock)
   if (footer) safeObserver.observe(footer)
+}
+
+function syncVisualActivity() {
+  window.clearInterval(nowTimer)
+  window.clearInterval(rotateTimer)
+  if (!visuallyActive.value) {
+    if (measureHandle) cancelAnimationFrame(measureHandle)
+    measureHandle = 0
+    activeAnim?.cancel()
+    safeObserver?.disconnect()
+    return
+  }
+  now.value = Date.now()
+  nowTimer = window.setInterval(() => { now.value = Date.now() }, 1000)
+  startRotateTimer()
+  observeSafeArea()
+  scheduleMeasure()
 }
 
 async function exportHomework() {
@@ -532,12 +554,9 @@ function restoreHistoryItem(item) {
 }
 
 onMounted(() => {
-  nowTimer = window.setInterval(() => { now.value = Date.now() }, 1000)
   contentStore.archivePastHomework()
-  startRotateTimer()
+  syncVisualActivity()
   window.addEventListener('resize', scheduleMeasure)
-  observeSafeArea()
-  scheduleMeasure()
   if (props.manageFloat) {
     resetFloatIdle()
     window.addEventListener('pointerdown', resetFloatIdle, { capture: true, passive: true })
@@ -558,6 +577,7 @@ onUnmounted(() => {
   measureHandle = 0
 })
 
+watch(visuallyActive, syncVisualActivity, { flush: 'post' })
 watch(() => visibleItems.value.map(item => item.id).join('|'), scheduleMeasure, { flush: 'post' })
 watch(() => sortedItems.value.length, scheduleMeasure, { flush: 'post' })
 watch([editorOpen, historyOpen], ([editing, hist], previous) => {
