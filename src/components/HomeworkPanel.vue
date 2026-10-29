@@ -454,13 +454,13 @@ function removePreset(subject) {
 }
 
 function saveHomework() {
-  if (!content.value.trim()) { formError.value = '请填写作业内容'; return }
+  if (!content.value.trim()) { formError.value = '请输入作业内容'; return }
   const hasStartDate = !!startDate.value
   const hasDueDate = !!dueDate.value
   const hasStartTime = !!startTime.value
   const hasDueTime = !!dueTime.value
-  if (hasStartDate && !hasDueDate && !hasDueTime) { formError.value = '填了开始日期就必须填截止日期'; return }
-  if (hasDueDate && !hasStartDate && !hasStartTime) { formError.value = '填了截止日期就必须填开始日期'; return }
+  if (hasStartDate && !hasDueDate && !hasDueTime) { formError.value = '请补全截止日期'; return }
+  if (hasDueDate && !hasStartDate && !hasStartTime) { formError.value = '请补全开始日期'; return }
   if (hasStartTime && !hasStartDate) startDate.value = todayDate()
   if (hasDueTime && !hasDueDate) dueDate.value = todayDate()
   const subjectName = subjectChoice.value === CUSTOM_SUBJECT ? customSubject.value.trim() : subjectChoice.value
@@ -680,7 +680,7 @@ watch(subjectPresets, list => {
                 <div class="dialog-label">开始时间<div class="homework-time-row"><FluentDatePicker v-model="startDate" placeholder="日期" /><FluentTimePicker v-model="startTime" placeholder="时间" /></div></div>
                 <div class="dialog-label">截止时间<div class="homework-time-row"><FluentDatePicker v-model="dueDate" placeholder="日期" /><FluentTimePicker v-model="dueTime" placeholder="时间" /></div></div>
               </div>
-              <p class="homework-hint">未填写日期时自动按今日计算；填写了日期则需同时填写开始和截止日期。</p>
+              <p class="homework-hint">只填时间时按今天计算。</p>
               <p v-if="formError" class="field-error">{{ formError }}</p>
             </div>
             <div class="dialog-actions"><button type="button" class="focus-control" @click="closeEditor">取消</button><button type="submit" class="focus-control primary">{{ editingId ? '保存' : '布置' }}</button></div>
@@ -688,7 +688,7 @@ watch(subjectPresets, list => {
           <div v-else class="homework-template">
             <section class="homework-template-section">
               <h3>预设科目</h3>
-              <p class="homework-hint">布置作业时科目下拉框按此顺序显示；移除科目会同时删除该科目的模板。</p>
+              <p class="homework-hint">删除科目时会一并删除模板。</p>
               <div class="template-preset-list">
                 <span v-for="subject in subjectPresets" :key="subject" class="template-preset">
                   {{ subject }}
@@ -710,7 +710,7 @@ watch(subjectPresets, list => {
                   <FluentTimePicker v-model="templateDueTime" placeholder="截止时间" />
                 </div>
               </label>
-              <p class="homework-hint">模板仅预填新建作业的开始/截止时间；编辑已布置的作业时不会应用。</p>
+              <p class="homework-hint">新建作业时自动填入。</p>
               <div class="template-actions">
                 <span class="template-notice">{{ templateNotice }}</span>
                 <button type="button" class="micro-button" @click="clearTemplate">清空模板</button>
@@ -733,7 +733,7 @@ watch(subjectPresets, list => {
               <span class="homework-history-body">
                 <span class="homework-history-head">
                   <strong>{{ item.subject }}</strong>
-                  <span class="homework-badge" :class="item.reason === 'auto' ? 'badge-auto' : 'badge-manual'">{{ item.reason === 'auto' ? '自动删除' : '手动删除' }}</span>
+                  <span class="homework-badge" :class="item.reason === 'auto' ? 'badge-auto' : 'badge-manual'">{{ item.reason === 'auto' ? '到期归档' : '手动移除' }}</span>
                   <small v-if="formatTimeRange(item.startAt, item.dueAt)" class="homework-time-badge">{{ formatTimeRange(item.startAt, item.dueAt) }}</small>
                 </span>
                 <span class="homework-content">{{ item.content }}</span>

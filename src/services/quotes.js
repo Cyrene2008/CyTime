@@ -1,8 +1,8 @@
 import { fetchJson } from './desktop'
 
 export const quoteApiEndpoints = [
-  { id: 'cf', label: 'Cloudflare（time.cyrene.hk）', base: 'https://time.cyrene.hk/api/v1/quote' },
-  { id: 'server', label: '昔言官方源（quote.cyrene.hk）', base: 'https://quote.cyrene.hk/api/v1/quote' }
+  { id: 'cf', label: '昔时源', base: 'https://time.cyrene.hk/api/v1/quote' },
+  { id: 'server', label: '昔言源', base: 'https://quote.cyrene.hk/api/v1/quote' }
 ]
 
 export function quoteApiOrder(preferred = 'cf') {
@@ -25,10 +25,10 @@ async function fetchQuoteApi(path, signal, preferred = 'cf') {
 }
 
 export const quoteSourceOptions = {
-  cytime: { label: 'CyQuote 昔言', language: '中文', description: '由Cyrene2008维护并提供的内容安全的语录库♪', url: 'https://time.cyrene.hk/api/v1/quote?format=json' },
+  cytime: { label: 'CyQuote 昔言', language: '中文', description: '昔言精选语录', url: 'https://time.cyrene.hk/api/v1/quote?format=json' },
   hitokoto: { label: '一言', language: '中文', description: '综合短句与名人语录', url: 'https://v1.hitokoto.cn/?encode=json' },
   jinrishici: { label: '今日诗词', language: '中文', description: '古诗词与作者出处', url: 'https://v1.jinrishici.com/all.json' },
-  poetry: { label: '诗泉', language: '中文', description: '随机古诗词与朝代作者', url: 'https://poetry.palemoky.com/api/poems/random?lang=zh-Hans' },
+  poetry: { label: '诗泉', language: '中文', description: '古诗词与出处', url: 'https://poetry.palemoky.com/api/poems/random?lang=zh-Hans' },
   vvhan: { label: 'VVHAN 智慧语录', language: '中文', description: '励志与学习短句', url: 'https://api.vvhan.com/api/wisdom?type=json' },
   xygeng: { label: '一言一语', language: '中文', description: '随机语录与作品信息', url: 'https://api.xygeng.cn/one' },
   adviceSlip: { label: 'Advice Slip', language: 'English', description: '英文建议与生活提示', url: 'https://api.adviceslip.com/advice' }

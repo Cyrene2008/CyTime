@@ -49,7 +49,7 @@ export default defineConfig({
       injectRegister: null,
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'CyTime 昔时时钟|班级大屏时钟|电子时钟|倒计时|计时器',
+        name: 'CyTime 昔时时钟',
         short_name: 'CyTime',
         lang: 'zh-CN',
         dir: 'ltr',

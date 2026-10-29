@@ -189,7 +189,7 @@ onUnmounted(() => window.clearTimeout(notepadTimer))
           <span>记事板</span>
           <button v-if="notepad && !notepadEditing" type="button" class="micro-button icon-only" title="清空记事板" aria-label="清空记事板" @click="clearNotepad"><FluentIcon icon="delete-20-regular" :width="12" /></button>
         </div>
-        <textarea v-if="notepadEditing" ref="notepadRef" v-model="notepadDraft" class="blackboard-notepad-input" rows="3" placeholder="写点什么…（失焦自动保存）" @input="onNotepadInput" @blur="saveNotepad" @keydown.esc="saveNotepad"></textarea>
+        <textarea v-if="notepadEditing" ref="notepadRef" v-model="notepadDraft" class="blackboard-notepad-input" rows="3" placeholder="写点什么…" @input="onNotepadInput" @blur="saveNotepad" @keydown.esc="saveNotepad"></textarea>
         <p v-else class="blackboard-notepad-text" :class="{ empty: !notepad }" @click="openNotepad">{{ notepad || '点此记点什么…' }}</p>
       </section>
     </div>
@@ -204,7 +204,7 @@ onUnmounted(() => window.clearTimeout(notepadTimer))
         <strong>{{ editor.name }}</strong>
         <button type="button" class="micro-button icon-only" title="关闭" aria-label="关闭" @click="editor = null"><FluentIcon icon="dismiss-20-regular" :width="13" /></button>
       </div>
-      <p class="blackboard-editor-hint">{{ editor.dateLabel }} · 来自「{{ editor.rosterName }}」，点选人员即保存</p>
+      <p class="blackboard-editor-hint">{{ editor.dateLabel }} · {{ editor.rosterName }} · 点选即保存</p>
       <div class="blackboard-editor-chips">
         <button v-for="member in duty.members" :key="member.id" type="button" class="category-chip" :class="{ active: editorIds.includes(member.id) }" @click="toggleEditorMember(member.id)">{{ member.name }}</button>
       </div>

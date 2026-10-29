@@ -72,7 +72,7 @@ function removeTask() { if (task.value) timeStore.removeTimer(task.value) }
 
 <template>
   <section class="focus-view" :class="{ 'has-laps': lapsOpen && lapCount }">
-    <div class="focus-status">{{ task?.status === 'paused' ? '已暂停' : task?.label || '准备好记录一段时间' }}</div>
+    <div class="focus-status">{{ task?.status === 'paused' ? '已暂停' : task?.label || '点击时间开始计时' }}</div>
     <time ref="clockRef" class="focus-clock" :class="{ muted: !task }" role="button" tabindex="0" aria-label="打开计时器设置" @click="settingsOpen = true" @keydown.enter.prevent="settingsOpen = true" @keydown.space.prevent="settingsOpen = true"><template v-for="(char, index) in display.split('')" :key="index"><b v-if="char === ':'">:</b><span v-else class="hero-digit">{{ char }}</span></template></time>
     <p v-if="task" class="focus-caption">{{ task.mode === 'absolute' ? '连续计时' : '本次计时' }}</p>
     <div class="focus-controls">

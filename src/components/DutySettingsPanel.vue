@@ -70,7 +70,7 @@ async function importRosterFile(event) {
     const result = await parseRosterFile(file.name, bytes)
     contentStore.importMembers(result.members)
     const added = duty.value.members.length - before
-    memberMessage.value = `已读取 ${result.name}：新增 ${added} 人，现有 ${duty.value.members.length} 人（按拼音排序）`
+    memberMessage.value = `已导入 ${added} 人，现有 ${duty.value.members.length} 人`
   } catch (error) {
     memberMessage.value = `导入失败：${error?.message || error}`
   }
@@ -350,7 +350,7 @@ async function exportStats() {
 
   <section v-if="tab === 'members'" class="setting-card">
     <div class="card-toolbar">
-      <div><h3>导入与导出</h3><p>支持 CSV / JSON / XLSX，兼容点名器名单格式；导入后按拼音排序。</p></div>
+      <div><h3>导入与导出</h3><p>支持 CSV、JSON 和 Excel 名单。</p></div>
       <div class="inline-form">
         <button type="button" class="subtle-button" @click="rosterFileInput?.click()"><FluentIcon icon="arrow-upload-20-regular" :width="14" /> 导入文件</button>
         <input ref="rosterFileInput" type="file" accept=".csv,.json,.xlsx,.xls" hidden @change="importRosterFile" />
@@ -360,7 +360,7 @@ async function exportStats() {
     </div>
     <small v-if="memberMessage" class="inline-status">{{ memberMessage }}</small>
     <div class="card-toolbar duty-card-gap">
-      <div><h3>手动维护</h3><p>现有 {{ duty.members.length }} 人；点击姓名可直接修改，点性别标签切换。</p></div>
+      <div><h3>成员名单</h3><p>共 {{ duty.members.length }} 人，可修改姓名与性别。</p></div>
       <div class="inline-form duty-member-form">
         <input v-model="memberForm.name" placeholder="姓名" @keydown.enter.prevent="addMember" />
         <input v-model="memberForm.enName" placeholder="英文名（选填）" @keydown.enter.prevent="addMember" />
@@ -385,7 +385,7 @@ async function exportStats() {
 
   <section v-else-if="tab === 'rosters'" class="setting-card">
     <div class="card-toolbar">
-      <div><h3>值日名单</h3><p>可建多个名单（如日常值日、大扫除），各自独立轮换、独立计次。</p></div>
+      <div><h3>值日名单</h3><p>按用途创建名单，分别安排任务。</p></div>
       <div class="inline-form">
         <input v-model="newRosterName" placeholder="名单名称" @keydown.enter.prevent="addRoster" />
         <button type="button" class="subtle-button" @click="addRoster">新建名单</button>
@@ -417,23 +417,23 @@ async function exportStats() {
             <span>适用星期</span>
             <div class="category-chips duty-chip-row">
               <button v-for="item in weekdayChips" :key="item.value" type="button" class="category-chip" :class="{ active: roster.weekdays?.includes(item.value) }" @click="toggleWeekday(roster, item.value)">{{ item.label }}</button>
-              <small class="duty-hint">未选 = 每天</small>
+              <small class="duty-hint">不选则每天排班</small>
             </div>
           </div>
           <div class="duty-field">
             <span>参与人员</span>
             <div class="category-chips duty-chip-row">
               <button v-for="member in duty.members" :key="member.id" type="button" class="category-chip" :class="{ active: !roster.memberIds?.length || roster.memberIds.includes(member.id) }" @click="toggleRosterMember(roster, member.id)">{{ member.name }}</button>
-              <small class="duty-hint">未选 = 全体成员</small>
+              <small class="duty-hint">不选则所有人参与</small>
             </div>
           </div>
           <div v-if="roster.mode !== 'manual'" class="duty-field">
-            <span>从今天起校准</span>
+            <span>调整轮换</span>
             <div class="inline-form">
-              <button type="button" class="subtle-button" @click="shiftAnchor(roster, 1)">换下一位</button>
-              <button type="button" class="subtle-button" @click="shiftAnchor(roster, -1)">换上一位</button>
+              <button type="button" class="subtle-button" @click="shiftAnchor(roster, 1)">换下一轮</button>
+              <button type="button" class="subtle-button" @click="shiftAnchor(roster, -1)">换上一轮</button>
             </div>
-            <small class="duty-hint">从今天锚定，不改已过去的记录；精确到某天的「定为第 N 次」在排班预览里。未启动软件的日子不计入索引，不会自己往后跑。</small>
+            <small class="duty-hint">从今天调整，过去的安排不变。</small>
           </div>
           <div class="duty-field">
             <span>值日任务</span>
@@ -466,7 +466,7 @@ async function exportStats() {
 
   <section v-else-if="tab === 'preview'" class="setting-card">
     <div class="card-toolbar">
-      <div><h3>在校日与节假日</h3><p>当天打开过应用会自动记为在校日；已过去的非在校日不参与轮换。</p></div>
+      <div><h3>在校日与节假日</h3><p>当天自动记录，漏记可补记。</p></div>
       <div class="inline-form duty-date-row">
         <FluentDatePicker v-model="newSchoolDay" placeholder="日期" />
         <button type="button" class="subtle-button" @click="addSchoolDay()"><FluentIcon icon="add-20-regular" :width="14" /> 补记</button>
@@ -474,7 +474,7 @@ async function exportStats() {
       </div>
     </div>
     <div class="duty-field duty-field-gap">
-      <span>已记录在校日（{{ duty.schoolDays.length }} 个，点击移除）</span>
+      <span>在校日（{{ duty.schoolDays.length }} 天）</span>
       <div class="category-chips duty-chip-row">
         <button v-for="day in recentSchoolDays" :key="day" type="button" class="category-chip active" @click="removeSchoolDay(day)">{{ day }} ×</button>
         <small v-if="!duty.schoolDays.length" class="duty-hint">还没有记录</small>
@@ -527,7 +527,7 @@ async function exportStats() {
           <p v-if="!row.lines.length" class="empty-inline">该名单还没有任务。</p>
         </div>
         <div v-if="editingDate === row.date" class="duty-editor">
-          <p class="duty-hint">点击需要调整的任务展开人员名单，点选即保存。</p>
+          <p class="duty-hint">展开任务后点选人员，即时保存。</p>
           <div v-for="line in editLines" :key="line.choreId" class="duty-editor-line">
             <div class="duty-editor-line-head">
               <button type="button" class="duty-editor-toggle" :aria-expanded="expandedEditChoreId === line.choreId" :aria-controls="`duty-edit-${row.date}-${line.choreId}`" @click="toggleEditLine(line)">
@@ -548,7 +548,7 @@ async function exportStats() {
           </div>
         </div>
         <div v-if="calibratingDate === row.date" class="duty-editor duty-calibrate">
-          <p :id="`duty-calibrate-hint-${row.date}`" class="duty-hint">输入轮换次数（从 1 开始）即可预览，点击应用才保存；从这天起校准自动轮换，直到下一处定次。此前的记录不变。</p>
+          <p :id="`duty-calibrate-hint-${row.date}`" class="duty-hint">从这天起调整轮换，预览后应用。</p>
           <form class="duty-calibrate-controls" @submit.prevent="applyAnchor(row)">
             <label class="duty-calibrate-number">定为第<input v-model="calibrateOccurrence" type="number" min="1" :max="Number.MAX_SAFE_INTEGER" step="1" inputmode="numeric" aria-label="轮换次数" :aria-invalid="calibrateIndex === null" :aria-describedby="`duty-calibrate-hint-${row.date}`" />次</label>
             <button type="button" class="subtle-button" :disabled="calibrateIndex === null || calibrateIndex === 0" @click="adjustCalibrate(-1)">上一次</button>
@@ -561,7 +561,7 @@ async function exportStats() {
             <div v-for="line in calibrateLines" :key="line.choreId" class="duty-line" :class="{ overridden: line.overridden }"><span class="duty-line-chore">{{ line.name }}<em v-if="line.overridden">手动</em></span><span class="duty-line-names">{{ lineNames(line) }}</span></div>
             <p v-if="!calibrateLines.length" class="empty-inline">该名单还没有任务。</p>
           </div>
-          <p v-if="row.overridden" class="duty-hint">本日手动指定的人员会保留，定次只调整自动轮换。</p>
+          <p v-if="row.overridden" class="duty-hint">手动指定的人员不会改变。</p>
           <div class="inline-form">
             <button v-if="row.anchored" type="button" class="subtle-button" @click="clearAnchor(row.date)"><FluentIcon icon="arrow-reset-20-regular" :width="14" /> 清除定次（恢复自动）</button>
             <button type="button" class="subtle-button" @click="calibratingDate = ''"><FluentIcon icon="checkmark-20-regular" :width="14" /> 完成</button>
@@ -586,6 +586,6 @@ async function exportStats() {
         <span class="duty-bar"><i :style="{ width: `${Math.round((row.total / statsMax) * 100)}%` }"></i></span>
       </div>
     </div>
-    <p v-else class="empty-inline">暂无统计数据：需要已有在校日记录，且该名单排过班。</p>
+    <p v-else class="empty-inline">暂无次数记录。</p>
   </section>
 </template>
