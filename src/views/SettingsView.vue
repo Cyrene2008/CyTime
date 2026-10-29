@@ -146,7 +146,7 @@ function syncNavIndicator(animate = false) {
     { transform: transform(prev) },
     { transform: transform({ top: stretchTop, height: stretchHeight }), offset: 0.52 },
     { transform: transform(next) }
-  ], { duration: 200, easing: 'cubic-bezier(.1, .9, .2, 1)' })
+  ], { duration: 260, easing: 'cubic-bezier(.1, .9, .2, 1)' })
 }
 function queueNavSync(animate = false) {
   if (navSyncFrame) cancelAnimationFrame(navSyncFrame)
@@ -399,26 +399,26 @@ onBeforeUnmount(() => {
         <div class="settings-dock-footer">CyTime 昔时时钟 · v{{ appVersion }}<template v-if="buildId"> · build {{ buildId }}</template></div>
       </aside>
 
-      <div class="settings-main"><div class="settings-scroll"><div :key="activePane" class="settings-pane-content">
+      <div class="settings-main"><div class="settings-scroll"><Transition name="settings-pane" mode="out-in"><div :key="activePane" class="settings-pane-content">
         <template v-if="activePane === 'startup'">
           <span class="settings-kicker">基础功能</span><h2>启动页面</h2><p class="settings-lead">设置启动页面和常用行为。</p>
           <section class="setting-card">
-            <div class="setting-card-heading"><FluentIcon icon="clock-20-regular" :width="20" /><div><h3>默认页面</h3><p>打开应用时显示的页面。</p></div></div>
+            <div class="setting-card-heading"><FluentIcon icon="clock-20-regular" :width="20" /><div><h3>默认页面</h3><p>启动 CyTime 时默认进入的页面。</p></div></div>
             <div class="segmented-control segmented-three"><button v-for="item in startupModeOptions" :key="item.value" type="button" :class="{ active: draft.startupMode === item.value }" @click="draft.startupMode = item.value">{{ item.label }}</button></div>
             <label v-if="isDesktop()" class="setting-select-label startup-window-select">窗口模式<FluentSelect v-model="draft.startupWindowMode" :options="[{ value: 'mini', label: '小窗（Mini）' }, { value: 'normal', label: '常规窗口' }, { value: 'max', label: '最大化' }, { value: 'full', label: '全屏' }]" /></label>
           </section>
-          <section class="setting-card setting-row"><div><h3>保持屏幕常亮</h3><p>使用时不自动息屏。</p></div><button type="button" class="switch" :class="{ on: draft.preventSleep }" :aria-pressed="draft.preventSleep" @click="draft.preventSleep = !draft.preventSleep"><i></i></button></section>
-          <section class="setting-card setting-row"><div><h3>空闲返回时钟</h3><p>30 秒无操作时返回时钟。</p></div><button type="button" class="switch" :class="{ on: draft.idleReturnTime }" :aria-pressed="draft.idleReturnTime" @click="draft.idleReturnTime = !draft.idleReturnTime"><i></i></button></section>
+          <section class="setting-card setting-row"><div><h3>保持屏幕常亮</h3><p>显示时钟时不会自动息屏。</p></div><button type="button" class="switch" :class="{ on: draft.preventSleep }" :aria-pressed="draft.preventSleep" @click="draft.preventSleep = !draft.preventSleep"><i></i></button></section>
+          <section class="setting-card setting-row"><div><h3>空闲返回时钟</h3><p>30 秒没有操作时，自动回到时钟。</p></div><button type="button" class="switch" :class="{ on: draft.idleReturnTime }" :aria-pressed="draft.idleReturnTime" @click="draft.idleReturnTime = !draft.idleReturnTime"><i></i></button></section>
           <section v-if="isDesktop()" class="setting-card">
-            <div class="setting-row"><div><h3>开机自启动</h3><p>登录电脑后自动运行。</p><small v-if="autostartMessage" class="inline-status">{{ autostartMessage }}</small></div><button type="button" class="switch" :class="{ on: draft.autostart }" :aria-pressed="draft.autostart" @click="toggleAutostart"><i></i></button></div>
+            <div class="setting-row"><div><h3>开机自启动</h3><p>登录电脑后自动启动 CyTime。</p><small v-if="autostartMessage" class="inline-status">{{ autostartMessage }}</small></div><button type="button" class="switch" :class="{ on: draft.autostart }" :aria-pressed="draft.autostart" @click="toggleAutostart"><i></i></button></div>
             <div v-if="draft.autostart" class="segmented-control segmented-two autostart-mode"><button type="button" :class="{ active: draft.autostartHidden }" @click="setAutostartHidden(true)">后台启动</button><button type="button" :class="{ active: !draft.autostartHidden }" @click="setAutostartHidden(false)">显示窗口</button></div>
           </section>
         </template>
 
         <template v-else-if="activePane === 'display'">
-          <span class="settings-kicker">基础功能</span><h2>显示内容</h2><p class="settings-lead">选择时钟上要显示的内容。</p>
+          <span class="settings-kicker">基础功能</span><h2>显示内容</h2><p class="settings-lead">选择时钟页面上要保留的信息。</p>
           <section class="setting-card"><div v-for="item in [{ key: 'showWeather', label: '天气' }, { key: 'showDayProgress', label: '每日进度', desc: '查看今天的时间进度。' }, { key: 'showDate', label: '日期与星期' }, { key: 'showLunar', label: '农历日期' }, { key: 'showAlmanac', label: '黄历宜忌' }, { key: 'showQuote', label: '语录' }, { key: 'showClockSeconds', label: '显示秒数' }, { key: 'showBlackboard', label: '小黑板', desc: '值日安排与计时任务。' }]" :key="item.key" class="setting-row"><div><h3>{{ item.label }}</h3><p v-if="item.desc">{{ item.desc }}</p></div><button type="button" class="switch" :class="{ on: draft[item.key] }" :aria-pressed="draft[item.key]" @click="draft[item.key] = !draft[item.key]"><i></i></button></div></section>
-          <section class="setting-card setting-row"><div><h3>作业板</h3><p>查看和布置作业。</p></div><button type="button" class="switch" :class="{ on: draft.showHomework }" :aria-pressed="draft.showHomework" @click="draft.showHomework = !draft.showHomework"><i></i></button></section>
+          <section class="setting-card setting-row"><div><h3>作业板</h3><p>在时钟旁查看并布置作业。</p></div><button type="button" class="switch" :class="{ on: draft.showHomework }" :aria-pressed="draft.showHomework" @click="draft.showHomework = !draft.showHomework"><i></i></button></section>
           <section class="setting-card setting-row"><div><h3>课程提示</h3><p>显示当前课程和下一节课。</p></div><button type="button" class="switch" :class="{ on: draft.showSchedule }" :aria-pressed="draft.showSchedule" @click="draft.showSchedule = !draft.showSchedule"><i></i></button></section>
         </template>
 
@@ -485,7 +485,7 @@ onBeforeUnmount(() => {
         <template v-else-if="activePane === 'updates'"><span class="settings-kicker">系统数据</span><h2>应用更新</h2><p class="settings-lead">检查并安装新版本。</p><section class="setting-card"><div class="setting-row"><div><h3>当前版本</h3><p>v{{ appVersion }} · {{ platformLabel }}</p><small v-if="updateState.message" class="inline-status">{{ updateState.message }}</small></div><div class="update-actions"><button type="button" class="subtle-button" :disabled="updateState.checking || updateState.installing" @click="checkForUpdate">{{ updateState.checking ? '检查中…' : '检查更新' }}</button><button v-if="updateState.available && updateState.downloadUrl" type="button" class="save-button" :disabled="updateState.installing" @click="installUpdate">{{ updateState.installing ? '下载中…' : '安装更新' }}</button><button v-else-if="updateState.available && updateState.url" type="button" class="subtle-button" @click="openReleasePage">打开下载页</button></div></div></section></template>
         <template v-else-if="activePane === 'data'"><span class="settings-kicker">系统数据</span><h2>备份与数据</h2><p class="settings-lead">备份、恢复或重置这台设备上的数据。</p><BackupPanel /></template>
         <template v-else-if="activePane === 'about'">
-          <span class="settings-kicker">关于</span><h2>项目信息</h2><p class="settings-lead">班级大屏与学习计时。</p>
+          <span class="settings-kicker">关于</span><h2>项目信息</h2><p class="settings-lead">面向班级大屏、自习与投屏的桌面时钟。</p>
           <section class="setting-card about-card">
             <div class="about-hero"><img class="about-app-mark" src="/icon-192.svg" alt="CyTime" /><h3>CyTime 昔时时钟</h3><strong>v{{ appVersion }}<template v-if="buildId"> · build {{ buildId }}</template></strong><p>昔光涟涟，时不我待。</p></div>
             <div class="about-credit-row"><div class="about-person"><img src="/avatars/Cyrene2008.png" alt="Cyrene2008" /><div><strong>Cyrene2008 <small>作者</small></strong><a class="project-link" href="https://github.com/Cyrene2008" target="_blank" rel="noreferrer">GitHub</a></div></div><div class="about-powered"><h3>Powered by VueFluentWidgets</h3><p>Fluent Design System for Vue · MIT License</p><p>Copyright © 2025-2026 Cyrene2008</p><a class="project-link" href="https://fluent.cyrene.hk" target="_blank" rel="noreferrer">VueFluentWidgets 官网</a></div></div>
@@ -494,7 +494,7 @@ onBeforeUnmount(() => {
           </section>
         </template>
         <section v-if="activePane === 'startup' && isDesktop()" class="setting-card setting-row uri-setting"><div><h3>链接调用</h3><p>允许其它应用通过链接打开昔时。</p><small v-if="uriMessage" class="inline-status">{{ uriMessage }}</small></div><div class="uri-setting-actions"><button type="button" class="subtle-button" @click="uriHelpOpen = true"><FluentIcon icon="info-20-regular" :width="16" />使用说明</button><button type="button" class="switch" :class="{ on: draft.uriRegistration }" :aria-pressed="draft.uriRegistration" @click="toggleUriRegistration"><i></i></button></div></section>
-       </div></div><footer class="settings-actions"><span v-if="feedbackMessage" class="save-message">{{ feedbackMessage }}</span><button type="button" class="subtle-button action-button" @click="cancel"><FluentIcon icon="dismiss-20-regular" :width="15" /> 取消</button><button type="button" class="save-button action-button" @click="save"><FluentIcon icon="checkmark-20-regular" :width="15" /> 保存</button></footer><FluentToast ref="toastRef" /></div>
+               </div></Transition></div><footer class="settings-actions"><span v-if="feedbackMessage" class="save-message">{{ feedbackMessage }}</span><button type="button" class="subtle-button action-button" @click="cancel"><FluentIcon icon="dismiss-20-regular" :width="15" /> 取消</button><button type="button" class="save-button action-button" @click="save"><FluentIcon icon="checkmark-20-regular" :width="15" /> 保存</button></footer><FluentToast ref="toastRef" /></div>
     </div>
     <div v-if="uriHelpOpen" class="uri-help-layer" role="dialog" aria-modal="true" aria-label="链接调用说明" @click.self="uriHelpOpen = false"><section class="uri-help-modal"><header><div><span class="settings-kicker">桌面端</span><h2>链接调用说明</h2></div><button type="button" class="dialog-close" aria-label="关闭说明" @click="uriHelpOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></header><div class="uri-help-content"><p>用链接打开昔时，或控制计时任务。</p><dl><dt>打开应用</dt><dd><code>cytime://</code></dd><dt>窗口模式</dt><dd><code>cytime://?mode=mini</code>、<code>normal</code>、<code>max</code> 或 <code>full</code></dd><dt>切换页面</dt><dd><code>cytime://page/time</code><br /><code>cytime://page/countdown</code><br /><code>cytime://page/timer</code></dd><dt>创建倒计时</dt><dd><code>cytime://countdown?target=20261101121500</code><br /><code>cytime://countdown?length=1800</code></dd><dt>控制倒计时</dt><dd><code>cytime://task/countdown/pause</code><br /><code>cytime://task/countdown/continue</code><br /><code>cytime://task/countdown/stop</code></dd></dl></div><footer><button type="button" class="save-button" @click="uriHelpOpen = false">知道了</button></footer></section></div>
     <div v-if="quoteConfigOpen" class="uri-help-layer" role="dialog" aria-modal="true" aria-label="CyQuote 昔言 · 分类" @click.self="quoteConfigOpen = false">

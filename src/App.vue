@@ -153,16 +153,17 @@ function updateViewPadding() {
   const navBottom = !settingsStore.examModeActive && navRef.value ? (navRef.value.getBoundingClientRect().bottom - shellRect.top) / scale : 0
   const safeTop = Math.max(0, dockBottom, navBottom) + 10
   for (const view of shell.querySelectorAll('.clock-view, .focus-view')) {
-    const viewHeight = view.getBoundingClientRect().height / scale
+    const viewHeight = view.offsetHeight
     const padBottom = parseFloat(getComputedStyle(view).paddingBottom) || 0
     const children = [...view.children].filter(element => {
       const position = getComputedStyle(element).position
-      return position !== 'absolute' && position !== 'fixed' && element.getBoundingClientRect().height > 0
+      return position !== 'absolute' && position !== 'fixed' && element.offsetHeight > 0
     })
     if (!children.length) { view.style.paddingTop = ''; continue }
-    const tops = children.map(element => element.getBoundingClientRect().top)
-    const bottoms = children.map(element => element.getBoundingClientRect().bottom)
-    const content = (Math.max(...bottoms) - Math.min(...tops)) / scale
+    // 排版尺寸不包含正在播放的位移动画，避免动画反过来改变居中位置。
+    const tops = children.map(element => element.offsetTop)
+    const bottoms = children.map(element => element.offsetTop + element.offsetHeight)
+    const content = Math.max(...bottoms) - Math.min(...tops)
     const minTop = 24
     const maxTop = Math.max(minTop, viewHeight - padBottom - content)
     // 目标：内容在视口内垂直居中；若居中会压到顶部导航且下推后仍能容纳，则让位到导航下方
@@ -600,7 +601,10 @@ onMounted(async () => {
     })
     const stage = shellRef.value?.querySelector('.clock-stage')
     if (stage) viewMutationObserver.observe(stage, { childList: true, subtree: true })
-    stopViewPaddingWatch = watch([() => route.path, isSettings, dialogActivity], () => nextTick(observeViewContent))
+    stopViewPaddingWatch = watch([() => route.path, isSettings, dialogActivity], ([, settings, dialogs], previous) => nextTick(() => {
+      observeViewContent()
+      if (!settings && !dialogs && (previous?.[1] || previous?.[2])) syncContentSafeTop()
+    }))
     nextTick(observeViewContent)
   } else {
     stopViewPaddingWatch = watch([() => isSettings.value || dialogActivity.value ? null : Math.floor(timeStore.now / 1000), () => route.path], () => nextTick(updateViewPadding))
@@ -665,7 +669,7 @@ onUnmounted(() => {
     <nav v-if="!isSettings" ref="navRef" class="mode-nav" aria-label="模式切换">
       <RouterLink v-for="item in navItems" :key="item.path" :to="item.path" :class="{ active: route.path === item.path }"><FluentIcon :icon="item.icon" :width="17" /><span>{{ item.label }}</span></RouterLink>
     </nav>
-    <main v-show="!isSettings" class="clock-stage"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><component :is="Component" /></Transition></RouterView></main>
+    <main class="clock-stage"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><component :is="Component" /></Transition></RouterView></main>
     <template v-if="!isSettings">
       <footer class="clock-footer">
         <button type="button" class="footer-action footer-settings" aria-label="设置" @click="openSettings()"><FluentIcon icon="settings-20-regular" :width="19" /></button>
@@ -677,9 +681,9 @@ onUnmounted(() => {
       </div>
       <div v-if="activeTaskCount && !settingsStore.examModeActive && !blackboardActive" ref="taskDock" class="task-docks" :class="['is-side', `task-docks-${taskSide}`, { 'is-marquee': taskOverflow }]"><div class="task-docks-track"><template v-for="copy in taskOverflow ? 2 : 1" :key="copy"><RouterLink v-for="task in timeStore.activeCountdowns" :key="`${copy}-${task.id}`" to="/countdown" class="task-widget task-widget-countdown" @click="timeStore.selectCountdown(task)"><span class="task-dot pink"></span><span>{{ task.label }}</span><strong>{{ formatDuration(countdownRemaining(task)) }}</strong></RouterLink><RouterLink v-for="task in timeStore.activeTimers" :key="`${copy}-${task.id}-timer`" to="/timer" class="task-widget task-widget-timer" @click="timeStore.selectTimer(task)"><span class="task-dot green"></span><span>{{ task.label }}</span><strong>{{ formatDuration(timeStore.timerElapsed(task)) }}</strong></RouterLink></template></div></div>
       <Transition name="notice"><div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div></Transition>
-      <Transition name="pure-prompt"><div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净模式提示"><div class="pure-prompt-card"><h2>进入纯净模式？</h2><p>只显示时间，适合考试或投屏。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">暂不进入 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div></Transition>
+      <Transition name="pure-prompt"><div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净模式提示"><div class="pure-prompt-card"><h2>进入纯净模式？</h2><p>天气、作业板和语录会暂时收起，只留下安静的时间画面，适合考试、自习或投屏。进入后可随时退出。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">暂不进入 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div></Transition>
     </template>
-    <div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" :initial-pane="settingsPane" @close="closeSettings" /></div>
+    <Transition name="settings-overlay"><div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" :initial-pane="settingsPane" @close="closeSettings" /></div></Transition>
     <div v-if="homeworkManageOpen" class="homework-float-layer" role="dialog" aria-modal="true" aria-label="悬浮作业板">
       <HomeworkPanel manage-float @close="homeworkManageOpen = false" />
     </div>

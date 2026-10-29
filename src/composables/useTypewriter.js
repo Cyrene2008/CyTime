@@ -5,40 +5,46 @@ export function useTypewriter(source, options = {}) {
   const isTyping = ref(false)
   let timer
   let generation = 0
+  let target = ''
+  let phase = 'type'
 
   watch([source, () => options.animation?.(), () => options.typeSpeed?.(), () => options.active?.() ?? true], ([value, , , active]) => {
-    const target = String(value || '')
+    const nextTarget = String(value || '')
+    if (nextTarget !== target) {
+      target = nextTarget
+      phase = displayed.value ? 'erase' : 'type'
+    }
     const currentGeneration = ++generation
     window.clearTimeout(timer)
-    let index = displayed.value.length
 
     const animation = options.animation?.() || 'typewriter'
     const speedMap = { slow: 54, standard: 34, fast: 18 }
     const typeSpeed = speedMap[options.typeSpeed?.()] || 34
     const eraseSpeed = Math.max(12, Math.round(typeSpeed * 0.55))
-    if (!active || animation !== 'typewriter' || displayed.value === target) {
+    if (animation !== 'typewriter') {
       displayed.value = target
       isTyping.value = false
       return
     }
+    // 弹层打开时保留已显示的字和当前阶段，恢复后接着播放。
+    if (!active || displayed.value === target) { isTyping.value = false; return }
 
-    isTyping.value = displayed.value !== target
+    isTyping.value = true
 
-    const type = () => {
+    const step = () => {
       if (currentGeneration !== generation) return
-      if (index < target.length) {
-        displayed.value = target.slice(0, ++index)
-        timer = window.setTimeout(type, typeSpeed)
+      if (phase === 'erase' && displayed.value.length) {
+        displayed.value = displayed.value.slice(0, -1)
+        timer = window.setTimeout(step, eraseSpeed)
+        return
+      }
+      phase = 'type'
+      if (displayed.value.length < target.length) {
+        displayed.value = target.slice(0, displayed.value.length + 1)
+        timer = window.setTimeout(step, typeSpeed)
       } else isTyping.value = false
     }
-    const erase = () => {
-      if (currentGeneration !== generation) return
-      if (index > 0) {
-        displayed.value = displayed.value.slice(0, --index)
-        timer = window.setTimeout(erase, eraseSpeed)
-      } else type()
-    }
-    erase()
+    timer = window.setTimeout(step, phase === 'erase' ? eraseSpeed : typeSpeed)
   }, { immediate: true })
 
   onUnmounted(() => {

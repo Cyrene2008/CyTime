@@ -23,7 +23,6 @@ const clockParts = computed(() => clock.value.split(':'))
 const clockRef = ref(null)
 useDigitBox(clockRef, [() => settingsStore.settings.fontFamily, () => settingsStore.settings.clockFontScale])
 const viewRef = ref(null)
-useSmoothShift(() => viewRef.value, () => stageActive.value && !isTyping.value)
 const quoteRef = ref(null)
 
 function handleStageClick(event) {
@@ -59,6 +58,7 @@ const { value: typedQuote, isTyping } = useTypewriter(() => quotesStore.current,
   animation: () => settingsStore.settings.quoteAnimation,
   typeSpeed: () => settingsStore.settings.quoteTypeSpeed
 })
+useSmoothShift(() => viewRef.value, () => stageActive.value && !isTyping.value)
 const quote = computed(() => settingsStore.settings.quoteAnimation === 'typewriter' ? typedQuote.value : quotesStore.current)
 const quoteAttribution = computed(() => {
   const meta = quotesStore.metadata

@@ -335,14 +335,32 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 }
 
 /* Settings surfaces stay opaque to avoid stacked, full-window blur passes. */
-.settings-scrim { backdrop-filter: none; }
+.settings-shell {
+  background:
+    radial-gradient(ellipse at 22% 16%, color-mix(in srgb, var(--accent), transparent 88%), transparent 46%),
+    radial-gradient(ellipse at 78% 82%, color-mix(in srgb, var(--accent), transparent 93%), transparent 52%),
+    var(--bg-base);
+}
+.settings-shell .clock-stage {
+  opacity: .42;
+  filter: blur(4px) saturate(.82);
+  pointer-events: none;
+}
+.clock-stage { transition: opacity .3s ease, filter .3s ease; }
+.settings-scrim { background: rgba(8, 5, 10, .34); backdrop-filter: none; }
 .settings-sheet {
   background: var(--bg-card-solid);
   backdrop-filter: none;
   box-shadow: -4px 0 14px rgba(0, 0, 0, .16);
 }
 .settings-sheet .uri-help-layer { background: rgba(0, 0, 0, .48); backdrop-filter: none; }
-.settings-sheet .uri-help-modal { animation: none; }
+.settings-overlay-enter-active, .settings-overlay-leave-active { transition: opacity .28s ease; }
+.settings-overlay-enter-active .settings-sheet, .settings-overlay-leave-active .settings-sheet { transition: transform .34s cubic-bezier(.2, .8, .2, 1); }
+.settings-overlay-enter-from, .settings-overlay-leave-to { opacity: 0; }
+.settings-overlay-enter-from .settings-sheet, .settings-overlay-leave-to .settings-sheet { transform: translateX(36px); }
+.settings-pane-enter-active, .settings-pane-leave-active { transition: opacity .22s ease, transform .22s ease; }
+.settings-pane-enter-from { opacity: 0; transform: translateY(7px); }
+.settings-pane-leave-to { opacity: 0; transform: translateY(-5px); }
 
 /* Settings dock: NameRoller-style items + transform-only sliding indicator. */
 .settings-dock { position: relative; overflow-x: hidden; overflow-y: auto; }
@@ -696,6 +714,17 @@ html[data-font="wengfaluosi"] .hero-clock, html[data-font="wengfaluosi"] .focus-
 
 .focus-dialog-layer { backdrop-filter: none; background: rgba(0, 0, 0, .56); }
 .focus-dialog.surface-panel { backdrop-filter: none; background: var(--bg-card-solid); }
+
+.switch { position: relative; flex-shrink: 0; }
+.switch i { position: absolute; top: 50%; left: 3px; transform: translate(0, -50%); }
+.switch.on i { transform: translate(18px, -50%); }
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-overlay-enter-active, .settings-overlay-leave-active,
+  .settings-overlay-enter-active .settings-sheet, .settings-overlay-leave-active .settings-sheet,
+  .settings-pane-enter-active, .settings-pane-leave-active,
+  .clock-stage { transition: none; }
+}
 
 @media (any-pointer: coarse) {
   .settings-close, .dialog-close, .dialog-tool { width: 40px; height: 40px; min-height: 40px; flex-shrink: 0; }
