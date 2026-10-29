@@ -70,7 +70,7 @@ export function parseBackup(input) {
   if (own(content, 'duty')) {
     const duty = content.duty
     requireValue(record(duty), '值日名单')
-    for (const key of ['members', 'rosters', 'schoolDays', 'holidays']) {
+    for (const key of ['members', 'rosters', 'schoolDays', 'activeDays', 'holidays']) {
       if (own(duty, key)) requireValue(Array.isArray(duty[key]), '值日名单')
     }
     for (const member of duty.members || []) requireValue(record(member) && typeof member.id === 'string' && typeof member.name === 'string', '成员名单')
@@ -83,7 +83,10 @@ export function parseBackup(input) {
         if (own(chore, 'queue')) requireValue(Array.isArray(chore.queue) && chore.queue.every(item => typeof item === 'string'), '值日顺序')
       }
     }
-    requireValue([...(duty.schoolDays || []), ...(duty.holidays || [])].every(validDate), '在校日')
+    requireValue([...(duty.schoolDays || []), ...(duty.activeDays || []), ...(duty.holidays || [])].every(validDate), '在校日')
+    if (own(duty, 'freezeUnstartedDays')) requireValue(typeof duty.freezeUnstartedDays === 'boolean', '轮换规则')
+    if (own(duty, 'rotationPolicyStart')) requireValue(validDate(duty.rotationPolicyStart), '轮换规则')
+    if (own(duty, 'startupFreezeRules')) requireValue(record(duty.startupFreezeRules) && Object.entries(duty.startupFreezeRules).every(([date, enabled]) => validDate(date) && typeof enabled === 'boolean'), '轮换规则')
     for (const key of ['overrides', 'anchors']) if (own(duty, key)) requireValue(record(duty[key]), '值日调整')
   }
   const time = value.time || {}

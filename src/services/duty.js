@@ -55,8 +55,40 @@ function rulesPass(duty, roster, dateStr) {
 export function rosterApplies(duty, roster, dateStr, today = localDateStr()) {
   if (roster.enabled === false) return false
   if (!rulesPass(duty, roster, dateStr)) return false
-  if (dateStr <= today) return duty.schoolDays.includes(dateStr)
+  if (dateStr <= today) {
+    const timeline = startupTimeline(duty)
+    if (!timeline || dateStr < timeline[0].date) return duty.schoolDays.includes(dateStr)
+    const policy = timeline.filter(entry => entry.date <= dateStr).at(-1)
+    return policy.required ? duty.schoolDays.includes(dateStr) && (duty.activeDays || []).includes(dateStr) : true
+  }
   return true
+}
+
+function startupTimeline(duty) {
+  if (!isDateString(duty.rotationPolicyStart)) return null
+  const changes = Object.entries(duty.startupFreezeRules || {}).filter(([date, required]) => isDateString(date) && date >= duty.rotationPolicyStart && typeof required === 'boolean')
+  const initial = changes.length ? false : Boolean(duty.freezeUnstartedDays)
+  const entries = new Map([[duty.rotationPolicyStart, initial], ...changes])
+  return [...entries].sort(([a], [b]) => a.localeCompare(b)).map(([date, required]) => ({ date, required }))
+}
+
+function pastRotationDates(duty, roster, today) {
+  const schoolDays = [...new Set(duty.schoolDays)].filter(day => day <= today && rulesPass(duty, roster, day)).sort()
+  const timeline = startupTimeline(duty)
+  if (!timeline) return schoolDays
+  const result = new Set(schoolDays.filter(day => day < timeline[0].date))
+  const activeDays = new Set(duty.activeDays || [])
+  timeline.forEach((entry, index) => {
+    const next = timeline[index + 1]?.date
+    const end = next && next <= today ? dateAdd(next, -1) : today
+    if (entry.date > end) return
+    if (entry.required) {
+      for (const day of schoolDays) if (day >= entry.date && day <= end && activeDays.has(day)) result.add(day)
+    } else {
+      for (let day = entry.date; day && day <= end; day = dateAdd(day, 1)) if (rulesPass(duty, roster, day)) result.add(day)
+    }
+  })
+  return [...result].sort()
 }
 
 function countRulesInRange(duty, roster, from, to) {
@@ -85,8 +117,7 @@ function countRulesInRange(duty, roster, from, to) {
 
 export function countOccurrences(duty, roster, dateStr, today = localDateStr()) {
   if (!isDateString(dateStr) || !isDateString(today)) return 0
-  const count = [...new Set(duty.schoolDays)].filter(day => day <= dateStr && day <= today && rulesPass(duty, roster, day)).length
-  return count + (dateStr > today ? countRulesInRange(duty, roster, dateAdd(today, 1), dateStr) : 0)
+  return createOccurrenceResolver(duty, roster, today).countAt(dateStr)
 }
 
 function latestAnchor(duty, roster, dateStr) {
@@ -102,12 +133,8 @@ function latestAnchor(duty, roster, dateStr) {
 
 function countBetween(duty, roster, from, to, today) {
   if (!from || from > to) return 0
-  let count = 0
-  for (const day of new Set(duty.schoolDays)) {
-    if (day >= from && day <= to && day <= today && rulesPass(duty, roster, day)) count++
-  }
-  if (to > today) count += countRulesInRange(duty, roster, from > today ? from : dateAdd(today, 1), to)
-  return count
+  const resolver = createOccurrenceResolver(duty, roster, today)
+  return resolver.countAt(to) - resolver.countAt(dateAdd(from, -1))
 }
 
 export function occurrenceIndex(duty, roster, dateStr, today = localDateStr()) {
@@ -129,12 +156,13 @@ function upperBound(dates, target) {
 }
 
 export function createOccurrenceResolver(duty, roster, today = localDateStr()) {
-  const dates = [...new Set(duty.schoolDays)].filter(day => day <= today && rulesPass(duty, roster, day)).sort()
+  const dates = pastRotationDates(duty, roster, today)
   const anchors = duty.anchors?.[roster.id] || {}
   const anchorDates = Object.keys(anchors).filter(isDateString).sort()
-  const countThrough = date => upperBound(dates, date) + (date > today ? countRulesInRange(duty, roster, dateAdd(today, 1), date) : 0)
+  const countThrough = date => isDateString(date) ? upperBound(dates, date) + (date > today ? countRulesInRange(duty, roster, dateAdd(today, 1), date) : 0) : 0
   return {
     dates,
+    countAt: countThrough,
     indexAt(date) {
       if (!isDateString(date)) return -1
       const anchorDate = anchorDates[upperBound(anchorDates, date) - 1]
@@ -145,6 +173,24 @@ export function createOccurrenceResolver(duty, roster, today = localDateStr()) {
   }
 }
 
+export function setStartupRotationPolicy(duty, enabled, date = localDateStr()) {
+  if (!isDateString(date)) return
+  duty.activeDays = [...new Set([...(duty.activeDays || []), date])].filter(isDateString).sort()
+  duty.schoolDays = [...new Set([...duty.schoolDays, date])].filter(isDateString).sort()
+  const snapshots = (duty.rosters || []).filter(roster => roster.mode !== 'manual').map(roster => ({ id: roster.id, index: Math.max(0, occurrenceIndex(duty, roster, date, date)) }))
+  if (!isDateString(duty.rotationPolicyStart) || duty.rotationPolicyStart > date) duty.rotationPolicyStart = date
+  const rules = { ...(duty.startupFreezeRules || {}) }
+  if (typeof rules[duty.rotationPolicyStart] !== 'boolean') rules[duty.rotationPolicyStart] = Boolean(duty.freezeUnstartedDays)
+  rules[date] = Boolean(enabled)
+  duty.freezeUnstartedDays = Boolean(enabled)
+  duty.startupFreezeRules = rules
+  duty.anchors ||= {}
+  for (const snapshot of snapshots) {
+    duty.anchors[snapshot.id] ||= {}
+    duty.anchors[snapshot.id][date] = snapshot.index
+  }
+}
+
 export function applicableDate(duty, dateStr, today = localDateStr()) {
   return (duty.rosters || []).some(roster => rosterApplies(duty, roster, dateStr, today))
 }
@@ -152,7 +198,7 @@ export function applicableDate(duty, dateStr, today = localDateStr()) {
 export function nextRosterDate(duty, roster, from, direction, today = localDateStr()) {
   if (!isDateString(from) || ![1, -1].includes(direction) || roster.enabled === false) return null
   if (direction > 0 && from < today) {
-    const next = [...new Set(duty.schoolDays)].filter(day => day > from && day <= today && rulesPass(duty, roster, day)).sort()[0]
+    const next = pastRotationDates(duty, roster, today).find(day => day > from)
     if (next) return next
     from = today
   }
@@ -162,7 +208,7 @@ export function nextRosterDate(duty, roster, from, direction, today = localDateS
     if (rulesPass(duty, roster, date)) return date
     date = dateAdd(date, direction)
   }
-  if (direction < 0) return [...new Set(duty.schoolDays)].filter(day => day < from && day <= today && rulesPass(duty, roster, day)).sort().at(-1) || null
+  if (direction < 0) return pastRotationDates(duty, roster, today).filter(day => day < from).at(-1) || null
   return null
 }
 

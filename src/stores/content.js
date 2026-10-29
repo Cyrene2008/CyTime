@@ -2,7 +2,7 @@ import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { persistDesktopValue } from '../services/desktop'
 import { createBatchedPersist } from '../services/persistence'
-import { localDateStr, countOccurrences, isDateString, normalizeSlots } from '../services/duty'
+import { localDateStr, countOccurrences, isDateString, normalizeSlots, setStartupRotationPolicy } from '../services/duty'
 import { sortMembersPinyin } from '../utils/dutyRoster'
 import { mergeSchedule } from '../services/schedule'
 import quoteData from '../data/quotes.jsonc'
@@ -15,6 +15,10 @@ const defaultDuty = () => ({
   members: [],
   rosters: [],
   schoolDays: [],
+  activeDays: [],
+  freezeUnstartedDays: false,
+  rotationPolicyStart: localDateStr(),
+  startupFreezeRules: {},
   overrides: {},
   anchors: {},
   skipWeekends: false,
@@ -43,10 +47,16 @@ function normalizeDuty(saved) {
   if (!Array.isArray(duty.members)) duty.members = []
   if (!Array.isArray(duty.rosters)) duty.rosters = []
   if (!Array.isArray(duty.schoolDays)) duty.schoolDays = []
+  if (!Array.isArray(duty.activeDays)) duty.activeDays = []
+  duty.freezeUnstartedDays = duty.freezeUnstartedDays === true
+  if (!isDateString(duty.rotationPolicyStart)) duty.rotationPolicyStart = localDateStr()
+  if (!duty.startupFreezeRules || typeof duty.startupFreezeRules !== 'object' || Array.isArray(duty.startupFreezeRules)) duty.startupFreezeRules = {}
+  if (typeof duty.startupFreezeRules[duty.rotationPolicyStart] !== 'boolean') duty.startupFreezeRules[duty.rotationPolicyStart] = duty.freezeUnstartedDays
   if (!duty.overrides || typeof duty.overrides !== 'object') duty.overrides = {}
   if (!duty.anchors || typeof duty.anchors !== 'object') duty.anchors = {}
   if (!Array.isArray(duty.holidays)) duty.holidays = []
   duty.schoolDays = [...new Set(duty.schoolDays)].filter(isDateString).sort()
+  duty.activeDays = [...new Set(duty.activeDays)].filter(isDateString).sort()
   duty.holidays = [...new Set(duty.holidays)].filter(isDateString).sort()
   for (const roster of duty.rosters) {
     for (const chore of Array.isArray(roster?.chores) ? roster.chores : []) if (chore && typeof chore === 'object') chore.slots = normalizeSlots(chore.slots)
@@ -234,11 +244,24 @@ export const useContentStore = defineStore('content', () => {
   }
 
   function recordSchoolDay(dateStr = localDateStr()) {
-    if (!dateStr || content.duty.schoolDays.includes(dateStr)) return false
-    content.duty.schoolDays.push(dateStr)
-    content.duty.schoolDays.sort()
+    if (!isDateString(dateStr)) return false
+    let changed = false
+    if (dateStr === localDateStr() && !content.duty.activeDays.includes(dateStr)) {
+      content.duty.activeDays.push(dateStr)
+      content.duty.activeDays.sort()
+      changed = true
+    }
+    if (!content.duty.schoolDays.includes(dateStr)) {
+      content.duty.schoolDays.push(dateStr)
+      content.duty.schoolDays.sort()
+      changed = true
+    }
+    if (changed) persist()
+    return changed
+  }
+  function setFreezeUnstartedDays(enabled) {
+    setStartupRotationPolicy(content.duty, enabled)
     persist()
-    return true
   }
   function updateDuty(patch) {
     Object.assign(content.duty, patch)
@@ -402,5 +425,5 @@ export const useContentStore = defineStore('content', () => {
   }
 
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, importSchedule, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, setHomeworkSubjectPresets, saveHomeworkTemplate, clearHomeworkTemplate, updateNotepad }
+  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, importSchedule, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, setFreezeUnstartedDays, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, setHomeworkSubjectPresets, saveHomeworkTemplate, clearHomeworkTemplate, updateNotepad }
 })

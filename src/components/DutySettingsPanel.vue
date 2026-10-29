@@ -484,6 +484,11 @@ async function exportStats() {
       <span>跳过周末</span>
       <button type="button" class="switch" :class="{ on: duty.skipWeekends }" :aria-pressed="duty.skipWeekends" @click="contentStore.updateDuty({ skipWeekends: !duty.skipWeekends })"><i></i></button>
     </div>
+    <div class="duty-field duty-field-gap duty-startup-rule">
+      <span>未启动不轮换</span>
+      <button type="button" class="switch" :class="{ on: duty.freezeUnstartedDays }" :aria-pressed="duty.freezeUnstartedDays" @click="contentStore.setFreezeUnstartedDays(!duty.freezeUnstartedDays)"><i></i></button>
+      <small class="duty-hint">当天没打开昔时，保留上次轮次。</small>
+    </div>
     <div class="duty-field duty-field-gap">
       <span>节假日（不排班）</span>
       <div class="inline-form duty-date-row">
