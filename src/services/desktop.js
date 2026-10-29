@@ -14,17 +14,9 @@ export function isDesktop() {
 }
 
 export async function probeDesktop() {
-  if (desktopState.value) return true
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    try {
-      const result = await invoke('application_platform')
-      desktopState.value = result === 'tauri'
-      if (desktopState.value) return true
-    } catch {}
-    if (hasTauriInternals()) return true
-    await new Promise(resolve => window.setTimeout(resolve, 100))
-  }
-  return hasTauriInternals()
+  if (desktopState.value || hasTauriInternals()) return true
+  try { desktopState.value = (await invoke('application_platform')) === 'tauri' } catch {}
+  return desktopState.value
 }
 
 function abortReason(signal) {

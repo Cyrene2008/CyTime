@@ -1,11 +1,13 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useTimeStore } from '../stores/time'
+import { useSettingsStore } from '../stores/settings'
 import { useDigitBox } from '../composables/useDigitBox'
 import { useDisplayTime } from '../composables/useDisplayTime'
 import { useDialogActivity } from '../composables/useDialogActivity'
 
 const timeStore = useTimeStore()
+const settingsStore = useSettingsStore()
 const { now } = useDisplayTime()
 const label = ref('')
 const inputError = ref('')
@@ -29,7 +31,7 @@ const isWarning = computed(() => Boolean(task.value?.status === 'running' && rem
 const isFinished = computed(() => task.value?.status === 'completed')
 const display = computed(() => formatDuration(task.value ? remaining.value : 0))
 const clockRef = ref(null)
-useDigitBox(clockRef)
+useDigitBox(clockRef, [() => settingsStore.settings.fontFamily, () => settingsStore.settings.clockFontScale])
 
 function formatDuration(totalSeconds) {
   const value = Math.max(0, Math.floor(totalSeconds))

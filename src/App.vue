@@ -17,6 +17,7 @@ import { dialogActivityKey } from './composables/useDialogActivity'
 import HomeworkPanel from './components/HomeworkPanel.vue'
 import { fetchNetworkTime } from './services/timeSync'
 import { locateWeatherCity } from './services/weather'
+import { localDateStr } from './services/duty'
 
 const route = useRoute()
 const router = useRouter()
@@ -43,10 +44,12 @@ const isSettings = computed(() => settingsOpen.value)
 provide('cytimeStageActive', computed(() => !isSettings.value && !dialogActivity.value))
 const purePromptOpen = ref(false)
 const purePromptSeconds = ref(10)
-const currentDate = computed(() => new Date(timeStore.now))
+const currentSecond = computed(() => Math.floor(timeStore.now / 1000))
+const currentDate = computed(() => new Date(currentSecond.value * 1000))
+const currentDay = computed(() => localDateStr(currentDate.value))
 const progress = computed(() => dayProgress(currentDate.value))
 const examRemaining = computed(() => Math.max(0, Math.ceil((new Date('2027-06-07T00:00:00').getTime() - timeStore.now) / 86400000)))
-const upcomingDays = computed(() => contentStore.content.importantDays.filter(item => new Date(`${item.date}T23:59:59`).getTime() >= timeStore.now).sort((a, b) => a.date.localeCompare(b.date)))
+const upcomingDays = computed(() => contentStore.content.importantDays.filter(item => item.date >= currentDay.value).sort((a, b) => a.date.localeCompare(b.date)))
 const dayRotation = ref(0)
 const featuredDay = computed(() => upcomingDays.value.length ? upcomingDays.value[dayRotation.value % upcomingDays.value.length] : null)
 const featuredDayRemaining = computed(() => featuredDay.value ? Math.max(0, Math.ceil((new Date(`${featuredDay.value.date}T00:00:00`).getTime() - timeStore.now) / 86400000)) : examRemaining.value)
@@ -67,6 +70,9 @@ let dayRotationTimer
 let showControlsHandler
 let taskResizeObserver
 let safeAreaObserver
+let viewResizeObserver
+let viewMutationObserver
+let viewLayoutFrame = 0
 let syncAfterVisibilityChange
 let stopTaskWatch
 let stopSafeAreaWatch
@@ -165,8 +171,25 @@ function updateViewPadding() {
     target = Math.min(target, maxTop)
     // flex 会在 padding 盒内再居中一次，因此由目标位置反推 padding-top
     const paddingTop = 2 * target - viewHeight + padBottom + content
-    view.style.paddingTop = `${Math.max(0, Math.ceil(paddingTop))}px`
+    const next = `${Math.max(0, Math.ceil(paddingTop))}px`
+    if (view.style.paddingTop !== next) view.style.paddingTop = next
   }
+}
+
+function scheduleViewPadding() {
+  if (viewLayoutFrame || isSettings.value || dialogActivity.value) return
+  viewLayoutFrame = requestAnimationFrame(() => { viewLayoutFrame = 0; updateViewPadding() })
+}
+
+function observeViewContent() {
+  viewResizeObserver?.disconnect()
+  for (const view of shellRef.value?.querySelectorAll('.clock-view, .focus-view') || []) {
+    for (const child of view.children) {
+      const position = getComputedStyle(child).position
+      if (position !== 'absolute' && position !== 'fixed') viewResizeObserver?.observe(child)
+    }
+  }
+  scheduleViewPadding()
 }
 
 function observeSafeAreas() {
@@ -232,7 +255,7 @@ function openSettings(pane = '') {
   settingsOpen.value = true
 }
 provide('cytimeOpenSettings', openSettings)
-provide('cytimeRefreshLayout', () => nextTick(updateViewPadding))
+provide('cytimeRefreshLayout', () => nextTick(scheduleViewPadding))
 
 function closeSettings() {
   settingsOpen.value = false
@@ -568,11 +591,20 @@ onMounted(async () => {
     observeSafeAreas()
   })
   nextTick(observeSafeAreas)
-  if (document.fonts?.ready) document.fonts.ready.then(() => updateViewPadding()).catch(() => {})
-  stopViewPaddingWatch = watch([() => isSettings.value || dialogActivity.value ? null : Math.floor(timeStore.now / 1000), () => route.path], async () => {
-    await nextTick()
-    updateViewPadding()
-  })
+  if (document.fonts?.ready) document.fonts.ready.then(scheduleViewPadding).catch(() => {})
+  if (typeof ResizeObserver !== 'undefined' && typeof MutationObserver !== 'undefined') {
+    viewResizeObserver = new ResizeObserver(scheduleViewPadding)
+    viewMutationObserver = new MutationObserver(records => {
+      const changed = records.some(record => record.target.matches?.('.clock-view, .focus-view') || [...record.addedNodes, ...record.removedNodes].some(node => node.matches?.('.clock-view, .focus-view') || node.querySelector?.('.clock-view, .focus-view')))
+      if (changed) nextTick(observeViewContent)
+    })
+    const stage = shellRef.value?.querySelector('.clock-stage')
+    if (stage) viewMutationObserver.observe(stage, { childList: true, subtree: true })
+    stopViewPaddingWatch = watch([() => route.path, isSettings, dialogActivity], () => nextTick(observeViewContent))
+    nextTick(observeViewContent)
+  } else {
+    stopViewPaddingWatch = watch([() => isSettings.value || dialogActivity.value ? null : Math.floor(timeStore.now / 1000), () => route.path], () => nextTick(updateViewPadding))
+  }
   syncWakeLock()
   if (!isHomeworkWindow.value) window.setTimeout(schedulePurePrompt, 550)
 })
@@ -599,6 +631,9 @@ onUnmounted(() => {
   disposePopupFit?.()
   taskResizeObserver?.disconnect()
   safeAreaObserver?.disconnect()
+  viewResizeObserver?.disconnect()
+  viewMutationObserver?.disconnect()
+  if (viewLayoutFrame) cancelAnimationFrame(viewLayoutFrame)
   stopTaskWatch?.()
   stopSafeAreaWatch?.()
   stopViewPaddingWatch?.()

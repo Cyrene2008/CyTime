@@ -1,6 +1,7 @@
 <script setup>
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useTimeStore } from '../stores/time'
+import { useSettingsStore } from '../stores/settings'
 import { useDigitBox } from '../composables/useDigitBox'
 import { useDisplayTime } from '../composables/useDisplayTime'
 import { useDialogActivity } from '../composables/useDialogActivity'
@@ -10,6 +11,7 @@ import { fileNamePart } from '../utils/csv'
 import { formatDate } from '../utils/time'
 
 const timeStore = useTimeStore()
+const settingsStore = useSettingsStore()
 const { active, now } = useDisplayTime()
 const refreshLayout = inject('cytimeRefreshLayout', null)
 const label = ref('')
@@ -31,7 +33,7 @@ const display = computed(() => {
   return [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), seconds % 60].map(value => String(value).padStart(2, '0')).join(':')
 })
 const clockRef = ref(null)
-useDigitBox(clockRef)
+useDigitBox(clockRef, [() => settingsStore.settings.fontFamily, () => settingsStore.settings.clockFontScale])
 const lapCount = computed(() => task.value?.laps?.length || 0)
 const lapPageCount = computed(() => Math.max(1, Math.ceil(lapCount.value / LAP_PAGE_SIZE)))
 const pagedLaps = computed(() => [...(task.value?.laps || [])].reverse().slice((lapPage.value - 1) * LAP_PAGE_SIZE, lapPage.value * LAP_PAGE_SIZE))

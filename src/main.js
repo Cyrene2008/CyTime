@@ -1,18 +1,17 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
-import VueFluentWidgets from 'vue-fluent-widgets'
+import { FluentIcon, FluentSelect, FluentDatePicker, FluentTimePicker, FluentColorPicker, FluentToast } from 'vue-fluent-widgets'
+import { addCollection } from '@iconify/vue'
+import fluentIcons from './data/fluent-icons.json'
 import 'vue-fluent-widgets/style.css'
-import '@iconify-json/fluent'
 import { invoke } from '@tauri-apps/api/core'
 import { useSettingsStore } from './stores/settings'
 import App from './App.vue'
 import ClockView from './views/ClockView.vue'
-import CountdownView from './views/CountdownView.vue'
-import TimerView from './views/TimerView.vue'
-import SettingsView from './views/SettingsView.vue'
-import HomeworkManageView from './views/HomeworkManageView.vue'
 import './styles/app.css'
+
+addCollection(fluentIcons)
 
 const isTauriRuntime = () => typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__ || window.__TAURI_METADATA__ || window.location?.hostname === 'tauri.localhost' || window.location?.protocol === 'tauri:')
 let desktopRuntime = isTauriRuntime()
@@ -99,23 +98,21 @@ async function bootstrap() {
   const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
     routes: [
-      { path: '/homework-manage', component: HomeworkManageView },
+      { path: '/homework-manage', component: () => import('./views/HomeworkManageView.vue') },
       { path: '/', redirect: startupPath },
       { path: '/time', component: ClockView },
       { path: '/clock', redirect: '/time' },
-      { path: '/countdown', component: CountdownView },
-      { path: '/timer', component: TimerView },
+      { path: '/countdown', component: () => import('./views/CountdownView.vue') },
+      { path: '/timer', component: () => import('./views/TimerView.vue') },
       { path: '/settings', redirect: '/time' },
       // SPA fallback for unknown paths (incl. deep-link boot)
       { path: '/:pathMatch(.*)*', redirect: () => startupPath }
     ]
   })
 
-  createApp(App)
-    .use(pinia)
-    .use(router)
-    .use(VueFluentWidgets)
-    .mount('#app')
+  const app = createApp(App).use(pinia).use(router)
+  for (const [name, component] of Object.entries({ FluentIcon, FluentSelect, FluentDatePicker, FluentTimePicker, FluentColorPicker, FluentToast })) app.component(name, component)
+  app.mount('#app')
 
   if (homeworkWindow && router.currentRoute.value.path !== '/homework-manage') {
     await router.replace('/homework-manage')
