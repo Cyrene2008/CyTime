@@ -27,21 +27,42 @@ export async function probeDesktop() {
   return hasTauriInternals()
 }
 
-export async function fetchJson(url, signal) {
-  if (isDesktop()) {
-    try {
-      if (signal?.aborted) throw new DOMException('The request was aborted', 'AbortError')
-      return await invoke('desktop_fetch_json', { url })
-    } catch (invokeError) {
-      if (invokeError?.name === 'AbortError') throw invokeError
-      const response = await fetch(url, { signal })
-      if (!response.ok) throw new Error(`Request failed: ${response.status}`)
-      return response.json()
+function abortReason(signal) {
+  return signal.reason instanceof Error ? signal.reason : new DOMException('请求已取消', 'AbortError')
+}
+
+function withAbort(promise, signal) {
+  if (signal.aborted) return Promise.reject(abortReason(signal))
+  return new Promise((resolve, reject) => {
+    const abort = () => { signal.removeEventListener('abort', abort); reject(abortReason(signal)) }
+    signal.addEventListener('abort', abort, { once: true })
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
+  })
+}
+
+export async function fetchJson(url, externalSignal) {
+  const controller = new AbortController()
+  const abort = () => controller.abort(externalSignal?.reason)
+  if (externalSignal?.aborted) abort()
+  else externalSignal?.addEventListener('abort', abort, { once: true })
+  const timeout = setTimeout(() => controller.abort(new DOMException('请求超时', 'TimeoutError')), 12000)
+  const signal = controller.signal
+  const load = async () => {
+    if (isDesktop()) {
+      try { return await withAbort(invoke('desktop_fetch_json', { url }), signal) }
+      catch (error) { if (signal.aborted || error?.name === 'AbortError') throw error }
     }
+    const response = await fetch(url, { signal })
+    if (!response.ok) throw new Error(`Request failed: ${response.status}`)
+    return response.json()
   }
-  const response = await fetch(url, { signal })
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`)
-  return response.json()
+  try {
+    if (signal.aborted) throw abortReason(signal)
+    return await withAbort(load(), signal)
+  } finally {
+    clearTimeout(timeout)
+    externalSignal?.removeEventListener('abort', abort)
+  }
 }
 
 export async function initDesktopBridge(onUri) {

@@ -1,7 +1,6 @@
-import { fetchJson, isDesktop } from './desktop'
+import { fetchJson, isDesktop } from './desktop.js'
 
-const WEATHER_ROOT = isDesktop() ? 'https://weatherapi.market.xiaomi.com/wtr-v3' : '/api/xiaomi-weather/wtr-v3'
-const WEATHER_URL = `${WEATHER_ROOT}/weather/all`
+const weatherRoot = () => isDesktop() ? 'https://weatherapi.market.xiaomi.com/wtr-v3' : '/api/xiaomi-weather/wtr-v3'
 const APP_KEY = 'weather20151024'
 const SIGN = 'zUFJoAR2ZVrDy1vF3D07'
 
@@ -16,14 +15,14 @@ export async function fetchXiaomiWeather(cityNum = '101010100', signal) {
     locale: 'zh_cn',
     days: '5'
   })
-  return fetchJson(`${WEATHER_URL}?${params}`, signal)
+  return fetchJson(`${weatherRoot()}/weather/all?${params}`, signal)
 }
 
 export async function searchXiaomiCities(query, signal) {
   const value = String(query || '').trim()
   if (!value) return []
   const params = new URLSearchParams({ name: value, appKey: APP_KEY, sign: SIGN, isGlobal: 'false', locale: 'zh_cn' })
-  const data = await fetchJson(`${WEATHER_ROOT}/location/city/search?${params}`, signal)
+  const data = await fetchJson(`${weatherRoot()}/location/city/search?${params}`, signal)
   const results = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : Array.isArray(data?.cities) ? data.cities : []
   return results.map(item => ({
     name: item.name || '',
@@ -66,7 +65,7 @@ async function reverseGeocode(latitude, longitude, signal) {
 
 async function locateByIp(signal) {
   let geo
-  try { geo = await fetchJson('https://ipwho.is/', signal) } catch {}
+  try { geo = await fetchJson('https://ipwho.is/', signal) } catch (error) { if (signal?.aborted || error?.name === 'AbortError') throw error }
   if (!geo || geo.success === false || (!geo.city && !Number.isFinite(Number(geo.latitude)))) {
     geo = await fetchJson('https://ipapi.co/json/', signal)
   }
@@ -76,7 +75,7 @@ async function locateByIp(signal) {
     try {
       const city = await reverseGeocode(latitude, longitude, signal)
       if (city) return { city, latitude, longitude }
-    } catch {}
+    } catch (error) { if (signal?.aborted || error?.name === 'AbortError') throw error }
   }
   const fallbackCity = String(geo?.city || '').trim()
   if (fallbackCity) return { city: fallbackCity, latitude, longitude }
@@ -84,7 +83,7 @@ async function locateByIp(signal) {
 }
 
 export async function locateWeatherCity(signal) {
-  let located = await locateByIp(signal).catch(() => null)
+  let located = await locateByIp(signal).catch(error => { if (signal?.aborted || error?.name === 'AbortError') throw error; return null })
   if (!located) {
     const coordinates = await browserCoordinates()
     const city = await reverseGeocode(coordinates.latitude, coordinates.longitude, signal)

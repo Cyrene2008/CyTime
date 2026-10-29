@@ -50,7 +50,7 @@ const upcomingDays = computed(() => contentStore.content.importantDays.filter(it
 const dayRotation = ref(0)
 const featuredDay = computed(() => upcomingDays.value.length ? upcomingDays.value[dayRotation.value % upcomingDays.value.length] : null)
 const featuredDayRemaining = computed(() => featuredDay.value ? Math.max(0, Math.ceil((new Date(`${featuredDay.value.date}T00:00:00`).getTime() - timeStore.now) / 86400000)) : examRemaining.value)
-const weatherTemperature = computed(() => weatherStore.current?.temperature?.value || '--')
+const weatherTemperature = computed(() => weatherStore.current?.temperature?.value ?? '--')
 const weatherStatus = computed(() => weatherStore.current ? weatherStore.currentLabel : (weatherStore.error || '天气同步中'))
 const taskNotice = ref('')
 const taskDock = ref(null)
@@ -74,6 +74,7 @@ let stopViewPaddingWatch
 let stopDesktopBridge
 let disposePopupFit
 let timeSyncTimer
+let timeSyncController
 let stopRightClick
 let idleReturnTimer
 let schoolDayTimer
@@ -427,6 +428,9 @@ function exitExamMode() {
 }
 
 async function syncNetworkTime() {
+  timeSyncController?.abort()
+  const controller = new AbortController()
+  timeSyncController = controller
   if (!settingsStore.settings.timeSyncEnabled) return
   const source = settingsStore.settings.timeSyncSource || 'auto'
   if (source === 'system') {
@@ -435,7 +439,8 @@ async function syncNetworkTime() {
   }
   const startedAt = Date.now()
   try {
-    const serverTime = await fetchNetworkTime(source)
+    const serverTime = await fetchNetworkTime(source, controller.signal)
+    if (controller.signal.aborted || !settingsStore.settings.timeSyncEnabled) return
     const midpoint = startedAt + (Date.now() - startedAt) / 2
     timeStore.setClockOffset(serverTime - midpoint)
   } catch {}
@@ -447,6 +452,7 @@ async function autoLocateWeather() {
   if (weatherCityNum && weatherCityNum !== '101010100') return
   try {
     const located = await locateWeatherCity()
+    if (settingsStore.settings.weatherAutoLocated || settingsStore.settings.weatherCityNum !== weatherCityNum) return
     settingsStore.update({ weatherCityName: located.name, weatherCityNum: located.num, weatherAutoLocated: true })
   } catch {}
 }
@@ -476,8 +482,10 @@ watch(() => [settingsStore.settings.weatherCityNum, settingsStore.settings.showW
 })
 watch(() => settingsStore.settings.preventSleep, syncWakeLock)
 watch(() => [settingsStore.settings.timeSyncEnabled, settingsStore.settings.timeSyncSource, settingsStore.settings.timeSyncInterval], () => {
+  timeSyncController?.abort()
   window.clearInterval(timeSyncTimer)
-  if (settingsStore.settings.timeSyncEnabled) {
+  if (settingsStore.settings.timeSyncSource === 'system') timeStore.setClockOffset(0)
+  else if (settingsStore.settings.timeSyncEnabled) {
     syncNetworkTime()
     timeSyncTimer = window.setInterval(syncNetworkTime, Math.max(5, Number(settingsStore.settings.timeSyncInterval) || 60) * 60 * 1000)
   }
@@ -529,7 +537,7 @@ onMounted(async () => {
   document.oncontextmenu = () => false
   document.addEventListener('fullscreenchange', () => { fullscreenActive.value = Boolean(document.fullscreenElement) })
   timeStore.start()
-  if (settingsStore.settings.timeSyncEnabled) {
+  if (settingsStore.settings.timeSyncEnabled && settingsStore.settings.timeSyncSource !== 'system') {
     syncNetworkTime()
     timeSyncTimer = window.setInterval(syncNetworkTime, Math.max(5, Number(settingsStore.settings.timeSyncInterval) || 60) * 60 * 1000)
   }
@@ -569,6 +577,7 @@ onMounted(async () => {
   if (!isHomeworkWindow.value) window.setTimeout(schedulePurePrompt, 550)
 })
 onUnmounted(() => {
+  timeSyncController?.abort()
   wakeLockDisposed = true
   wakeLock?.release?.().catch(() => {})
   timeStore.stop()

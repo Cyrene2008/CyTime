@@ -5,7 +5,7 @@ use std::net::{TcpListener, TcpStream};
 use std::process::Command;
 use std::time::Duration;
 use std::thread;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::fs;
 use std::path::PathBuf;
 use serde_json::Value;
@@ -15,6 +15,18 @@ use tauri::tray::TrayIconBuilder;
 use tauri_plugin_deep_link::DeepLinkExt;
 
 mod storage;
+
+fn http_client() -> Result<&'static reqwest::Client, String> {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    if let Some(client) = CLIENT.get() { return Ok(client); }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let _ = CLIENT.set(client);
+    CLIENT.get().ok_or_else(|| "network client unavailable".to_string())
+}
 
 struct PendingUris(Arc<Mutex<Vec<String>>>);
 
@@ -195,12 +207,9 @@ async fn desktop_download_update(url: String) -> Result<(), String> {
     if !allowed {
         return Err("更新地址不受支持".to_string());
     }
-    let response = reqwest::Client::builder()
-        .timeout(Duration::from_secs(180))
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .build()
-        .map_err(|error| error.to_string())?
+    let response = http_client()?
         .get(parsed)
+        .timeout(Duration::from_secs(180))
         .send()
         .await
         .map_err(|error| error.to_string())?
@@ -362,6 +371,7 @@ async fn desktop_fetch_json(url: String) -> Result<Value, String> {
         "worldtimeapi.org",
         "timeapi.io",
         "time.cyrene.hk",
+        "quote.cyrene.hk",
         "ipwho.is",
         "ipapi.co",
         "api.bigdatacloud.net",
@@ -372,10 +382,7 @@ async fn desktop_fetch_json(url: String) -> Result<Value, String> {
     if parsed.scheme() != "https" || !parsed.host_str().is_some_and(|host| allowed_hosts.contains(&host)) {
         return Err("network host is not allowed".to_string());
     }
-    let response = reqwest::Client::builder()
-        .timeout(Duration::from_secs(12))
-        .build()
-        .map_err(|error| error.to_string())?
+    let response = http_client()?
         .get(parsed)
         .send()
         .await
@@ -431,6 +438,14 @@ fn clear_stale_webview_cache() {
 
 #[cfg(not(windows))]
 fn clear_stale_webview_cache() {}
+
+#[cfg(test)]
+mod network_tests {
+    #[test]
+    fn requests_reuse_the_same_network_client() {
+        assert!(std::ptr::eq(super::http_client().unwrap(), super::http_client().unwrap()));
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

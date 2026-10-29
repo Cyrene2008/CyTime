@@ -77,6 +77,13 @@ const editingLessonId = ref(null)
 const cityResults = ref([])
 const citySearchOpen = ref(false)
 const citySearchLoading = ref(false)
+let selectedCityName = draft.weatherCityName
+let citySearchGeneration = 0
+let quoteConfigGeneration = 0
+let quoteConfigController
+let locateController
+let manualTimeController
+let disposed = false
 const quoteCategories = ref([])
 const quoteCounts = ref({})
 const quoteTotal = ref(0)
@@ -150,6 +157,7 @@ function queueNavSync(animate = false) {
   })
 }
 function save() {
+  if (!draft.weatherCityNum) { toastRef.value?.add({ title: '请从搜索结果中选择城市', duration: 2400 }); return }
   settingsStore.update({ ...draft })
   toastRef.value?.add({ title: '设置已保存', duration: 2400 })
 }
@@ -169,7 +177,20 @@ function addLesson() { const lesson = { subject: lessonSubject.value.trim() || '
 function editLesson(lesson) { editingLessonId.value = lesson.id; lessonSubject.value = lesson.subject; lessonWeekday.value = lesson.weekday; lessonStart.value = lesson.startAt; lessonEnd.value = lesson.endAt; lessonRoom.value = lesson.room || '' }
 function cancelLessonEdit() { editingLessonId.value = null; lessonSubject.value = ''; lessonRoom.value = '' }
 async function importQuotes(event) { const file = event.target.files?.[0]; if (!file) return; try { contentStore.addQuotes(await readQuoteFile(file)); feedbackMessage.value = '语录已导入' } catch { feedbackMessage.value = '金句文件格式无效' }; event.target.value = '' }
-async function refreshQuoteCategories() { quoteCategoryLoading.value = true; const preferred = draft.quoteApiEndpoint || settingsStore.settings.quoteApiEndpoint; try { const [list, stats] = await Promise.all([fetchQuoteCategories(undefined, preferred).catch(() => []), fetchQuoteStats(undefined, preferred).catch(() => null)]); quoteCategories.value = list.length ? list : ['崩铁', '幽默解压', '名人名言', '学习', '人民日报']; if (stats) { quoteCounts.value = stats.categories; quoteTotal.value = stats.total } } catch { quoteCategories.value = ['崩铁', '幽默解压', '名人名言', '学习', '人民日报'] } finally { quoteCategoryLoading.value = false } }
+async function refreshQuoteCategories() {
+  const request = ++quoteConfigGeneration
+  quoteConfigController?.abort()
+  const controller = new AbortController()
+  quoteConfigController = controller
+  quoteCategoryLoading.value = true
+  const preferred = draft.quoteApiEndpoint || settingsStore.settings.quoteApiEndpoint
+  try {
+    const [list, stats] = await Promise.all([fetchQuoteCategories(controller.signal, preferred).catch(() => []), fetchQuoteStats(controller.signal, preferred).catch(() => null)])
+    if (disposed || request !== quoteConfigGeneration || controller.signal.aborted) return
+    quoteCategories.value = list.length ? list : ['崩铁', '幽默解压', '名人名言', '学习', '人民日报']
+    if (stats) { quoteCounts.value = stats.categories; quoteTotal.value = stats.total }
+  } finally { if (!disposed && request === quoteConfigGeneration) quoteCategoryLoading.value = false }
+}
 function toggleQuoteCategory(category) { const selected = new Set(draft.quoteApiCategories || []); if (selected.has(category)) selected.delete(category); else selected.add(category); draft.quoteApiCategories = [...selected] }
 function openQuoteConfig() { quoteConfigOpen.value = true; refreshQuoteCategories() }
 function toggleCategoryWeights() {
@@ -235,11 +256,42 @@ async function installUpdate() {
 }
 async function requestNotifications() { if (typeof Notification === 'undefined') return; const permission = await Notification.requestPermission(); if (permission === 'granted') draft.notificationEnabled = true }
 function openCitySearch() { citySearchOpen.value = true; scheduleCitySearch() }
-function scheduleCitySearch() { window.clearTimeout(citySearchTimer); citySearchTimer = window.setTimeout(searchCities, 240) }
-async function searchCities() { const query = draft.weatherCityName.trim(); if (!query) { cityResults.value = []; return }; citySearchController?.abort(); citySearchController = new AbortController(); citySearchLoading.value = true; try { cityResults.value = await searchXiaomiCities(query, citySearchController.signal) } catch (error) { if (error?.name !== 'AbortError') cityResults.value = [] } finally { citySearchLoading.value = false } }
-function selectCity(city) { draft.weatherCityName = city.name; draft.weatherCityNum = city.locationKey.replace(/^weathercn:/, ''); citySearchOpen.value = false }
-function closeCitySearch() { window.setTimeout(() => { citySearchOpen.value = false }, 160) }
-function refreshWeather() { weatherStore.refresh(draft.weatherCityNum, true) }
+function scheduleCitySearch() {
+  window.clearTimeout(citySearchTimer)
+  citySearchController?.abort()
+  citySearchGeneration++
+  cityResults.value = []
+  citySearchLoading.value = Boolean(draft.weatherCityName.trim())
+  citySearchTimer = window.setTimeout(searchCities, 240)
+}
+async function searchCities() {
+  const query = draft.weatherCityName.trim()
+  const request = ++citySearchGeneration
+  if (!query) { cityResults.value = []; citySearchLoading.value = false; return }
+  const controller = new AbortController()
+  citySearchController = controller
+  citySearchLoading.value = true
+  try {
+    const cities = await searchXiaomiCities(query, controller.signal)
+    if (!disposed && request === citySearchGeneration && !controller.signal.aborted) cityResults.value = cities
+  } catch { if (!disposed && request === citySearchGeneration) cityResults.value = [] }
+  finally { if (!disposed && request === citySearchGeneration) citySearchLoading.value = false }
+}
+function selectCity(city) {
+  locateController?.abort()
+  locating.value = false
+  selectedCityName = city.name
+  draft.weatherCityName = city.name
+  draft.weatherCityNum = city.locationKey.replace(/^weathercn:/, '')
+  draft.weatherAutoLocated = true
+  citySearchOpen.value = false
+  window.clearTimeout(citySearchTimer)
+  citySearchController?.abort()
+  citySearchGeneration++
+  citySearchLoading.value = false
+}
+function closeCitySearch() { citySearchOpen.value = false }
+function refreshWeather() { if (draft.weatherCityNum) weatherStore.refresh(draft.weatherCityNum, true) }
 async function toggleAutostart() { if (!desktopMode.value) return; autostartMessage.value = '正在设置…'; try { const enabled = await setDesktopAutostart(!draft.autostart, draft.autostartHidden); draft.autostart = enabled; settingsStore.update({ autostart: enabled, autostartHidden: draft.autostartHidden }); autostartMessage.value = enabled ? '已开启开机启动' : '已关闭'; } catch { autostartMessage.value = '设置失败，请重试' } }
 async function setAutostartHidden(hidden) {
   if (draft.autostartHidden === hidden) return
@@ -255,7 +307,15 @@ async function setAutostartHidden(hidden) {
   }
 }
 async function toggleUriRegistration() { if (!desktopMode.value) return; uriMessage.value = '正在设置…'; try { const enabled = await setDesktopUriRegistration(!draft.uriRegistration); draft.uriRegistration = enabled; settingsStore.update({ uriRegistration: enabled }); uriMessage.value = enabled ? '已允许链接调用' : '已关闭链接调用'; } catch { uriMessage.value = '设置失败，请重试' } }
+function toggleAutoTimeSync() {
+  const enabled = draft.timeSyncEnabled && draft.timeSyncSource !== 'system'
+  draft.timeSyncEnabled = !enabled
+  if (!enabled && draft.timeSyncSource === 'system') draft.timeSyncSource = 'auto'
+}
 async function syncTimeNow() {
+  manualTimeController?.abort()
+  const controller = new AbortController()
+  manualTimeController = controller
   const source = draft.timeSyncSource || 'auto'
   if (source === 'system') {
     timeStore.setClockOffset(0)
@@ -265,41 +325,57 @@ async function syncTimeNow() {
   timeSyncMessage.value = '正在校时…'
   const startedAt = Date.now()
   try {
-    const serverTime = await fetchNetworkTime(source)
+    const serverTime = await fetchNetworkTime(source, controller.signal)
+    if (disposed || controller.signal.aborted || source !== draft.timeSyncSource) return
     timeStore.setClockOffset(serverTime - (startedAt + (Date.now() - startedAt) / 2))
     timeSyncMessage.value = '时间已校准'
   } catch {
-    timeSyncMessage.value = '暂时无法校时，请重试'
+    if (!disposed && !controller.signal.aborted) timeSyncMessage.value = '暂时无法校时，请重试'
   }
 }
 async function autoLocate() {
+  locateController?.abort()
+  const controller = new AbortController()
+  locateController = controller
   locating.value = true
   locateMessage.value = ''
   try {
-    const located = await locateWeatherCity()
+    const located = await locateWeatherCity(controller.signal)
+    if (disposed || controller.signal.aborted) return
+    selectedCityName = located.name
     draft.weatherCityName = located.name
     draft.weatherCityNum = located.num
+    draft.weatherAutoLocated = true
     locateMessage.value = `已定位到 ${located.name}，保存后生效`
     weatherStore.refresh(located.num, true)
   } catch {
-    locateMessage.value = '无法获取位置，请手动选择城市'
+    if (!disposed && !controller.signal.aborted) locateMessage.value = '无法获取位置，请手动选择城市'
   } finally {
-    locating.value = false
+    if (!disposed && controller === locateController) locating.value = false
   }
 }
 
-watch(() => draft.weatherCityName, () => { if (citySearchOpen.value) scheduleCitySearch() })
+watch(() => draft.weatherCityName, name => {
+  if (name !== selectedCityName) draft.weatherCityNum = ''
+  if (citySearchOpen.value) scheduleCitySearch()
+})
+watch(quoteConfigOpen, open => { if (!open) { quoteConfigGeneration++; quoteConfigController?.abort(); quoteCategoryLoading.value = false } })
 watch([activePane, activeGroup], () => queueNavSync(true))
 watch(activePane, pane => {
   if (pane === 'weather' || pane === 'location') weatherStore.refresh(draft.weatherCityNum)
+  else { citySearchGeneration++; window.clearTimeout(citySearchTimer); citySearchController?.abort(); citySearchOpen.value = false }
 }, { immediate: true })
 onMounted(() => {
   queueNavSync(false)
   getPlatform().then(platform => { platformLabel.value = String(platform).toUpperCase() }).catch(() => {})
 })
 onBeforeUnmount(() => {
+  disposed = true
   window.clearTimeout(citySearchTimer)
   citySearchController?.abort()
+  quoteConfigController?.abort()
+  locateController?.abort()
+  manualTimeController?.abort()
   if (navSyncFrame) cancelAnimationFrame(navSyncFrame)
   navAnimation?.cancel()
 })
@@ -393,8 +469,8 @@ onBeforeUnmount(() => {
           <span class="settings-kicker">环境提醒</span><h2>{{ activePane === 'weather' ? '天气' : '城市' }}</h2><p class="settings-lead">查看天气和设置城市。</p>
           <section class="setting-card">
             <div class="weather-refresh-row"><span>自动定位</span><div class="uri-setting-actions"><small v-if="locateMessage" class="inline-status">{{ locateMessage }}</small><button type="button" class="subtle-button" :disabled="locating" @click="autoLocate">{{ locating ? '定位中…' : '自动定位' }}</button></div></div>
-            <div class="city-picker wide-city-picker"><label class="setting-select-label">城市<input v-model="draft.weatherCityName" class="setting-input" autocomplete="off" @focus="openCitySearch" @blur="closeCitySearch" /></label>
-              <div v-if="citySearchOpen" class="city-results"><div v-if="citySearchLoading" class="city-result-message">正在搜索…</div><div v-else-if="!cityResults.length" class="city-result-message">输入城市名称搜索</div><button v-for="city in cityResults" v-else :key="city.locationKey" type="button" class="city-result" @mousedown.prevent="selectCity(city)"><strong>{{ city.name }}</strong><span>{{ city.affiliation || '中国' }}</span></button></div>
+            <div class="city-picker wide-city-picker"><label class="setting-select-label">城市<input v-model="draft.weatherCityName" class="setting-input" autocomplete="off" @focus="openCitySearch" @pointerdown="openCitySearch" @input="openCitySearch" @blur="closeCitySearch" /></label>
+              <div v-if="citySearchOpen" class="city-results"><div v-if="citySearchLoading" class="city-result-message">正在搜索…</div><div v-else-if="!cityResults.length" class="city-result-message">输入城市名称搜索</div><button v-for="city in cityResults" v-else :key="city.locationKey" type="button" class="city-result" @pointerdown.prevent="selectCity(city)"><strong>{{ city.name }}</strong><span>{{ city.affiliation || '中国' }}</span></button></div>
             </div>
             <p class="setting-copy">从搜索结果中选择城市。</p>
             <div v-if="activePane === 'weather'" class="weather-settings-grid"><div class="weather-refresh-row"><span>天气</span><button type="button" class="subtle-button" @click="refreshWeather">刷新天气</button></div><div v-if="weatherStore.current" class="weather-summary"><div><small>当前天气</small><strong>{{ weatherStore.currentLabel }}</strong></div><div><small>温度</small><strong>{{ weatherStore.current.temperature?.value }}{{ weatherStore.current.temperature?.unit || '℃' }}</strong></div><div><small>体感</small><strong>{{ weatherStore.current.feelsLike?.value ?? '--' }}℃</strong></div><div><small>湿度</small><strong>{{ weatherStore.current.humidity?.value ?? '--' }}%</strong></div><div><small>风速</small><strong>{{ weatherStore.current.wind?.speed?.value ?? '--' }}{{ weatherStore.current.wind?.speed?.unit || '' }}</strong></div></div></div>
@@ -405,7 +481,7 @@ onBeforeUnmount(() => {
         <template v-else-if="activePane === 'effects'"><span class="settings-kicker">内容语录</span><h2>语录样式</h2><p class="settings-lead">选择语录显示方式。</p><section class="setting-card"><label class="setting-select-label">显示动画<FluentSelect v-model="draft.quoteAnimation" :options="animationOptions" /></label><label class="setting-select-label">打字速度<FluentSelect v-model="draft.quoteTypeSpeed" :options="typeSpeedOptions" /></label></section></template>
         <template v-else-if="activePane === 'channels'"><span class="settings-kicker">内容语录</span><h2>语录来源</h2><p class="settings-lead">选择内容来源和出现比重。</p><LocalQuoteSourcePanel :draft="draft" :content="contentStore.content" @manage="openQuoteManager" /><QuoteSourcePanel :draft="draft" @configure="openQuoteConfig" /></template>
 
-        <template v-else-if="activePane === 'calibration'"><span class="settings-kicker">系统数据</span><h2>时间校准</h2><p class="settings-lead">选择时间来源或手动校准。</p><section class="setting-card"><div class="setting-row"><div><h3>自动校时</h3><p>定期校准显示时间。</p><small v-if="timeSyncMessage" class="inline-status">{{ timeSyncMessage }}</small></div><button type="button" class="switch" :class="{ on: draft.timeSyncEnabled }" @click="draft.timeSyncEnabled = !draft.timeSyncEnabled"><i></i></button></div><label class="setting-select-label">时间来源<FluentSelect v-model="draft.timeSyncSource" :options="timeSourceOptions" /></label><label class="range-control">校时间隔 <strong>{{ draft.timeSyncInterval }} 分钟</strong><input v-model.number="draft.timeSyncInterval" type="range" min="5" max="360" step="5" /></label><div class="weather-refresh-row"><span>手动校准</span><button type="button" class="subtle-button" @click="syncTimeNow">立即校时</button></div></section></template>
+        <template v-else-if="activePane === 'calibration'"><span class="settings-kicker">系统数据</span><h2>时间校准</h2><p class="settings-lead">选择时间来源或手动校准。</p><section class="setting-card"><div class="setting-row"><div><h3>自动校时</h3><p>定期校准显示时间。</p><small v-if="timeSyncMessage" class="inline-status">{{ timeSyncMessage }}</small></div><button type="button" class="switch" :class="{ on: draft.timeSyncEnabled && draft.timeSyncSource !== 'system' }" @click="toggleAutoTimeSync"><i></i></button></div><label class="setting-select-label">时间来源<FluentSelect v-model="draft.timeSyncSource" :options="timeSourceOptions" /></label><label class="range-control">校时间隔 <strong>{{ draft.timeSyncInterval }} 分钟</strong><input v-model.number="draft.timeSyncInterval" type="range" min="5" max="360" step="5" /></label><div class="weather-refresh-row"><span>手动校准</span><button type="button" class="subtle-button" @click="syncTimeNow">立即校时</button></div></section></template>
         <template v-else-if="activePane === 'updates'"><span class="settings-kicker">系统数据</span><h2>应用更新</h2><p class="settings-lead">检查并安装新版本。</p><section class="setting-card"><div class="setting-row"><div><h3>当前版本</h3><p>v{{ appVersion }} · {{ platformLabel }}</p><small v-if="updateState.message" class="inline-status">{{ updateState.message }}</small></div><div class="update-actions"><button type="button" class="subtle-button" :disabled="updateState.checking || updateState.installing" @click="checkForUpdate">{{ updateState.checking ? '检查中…' : '检查更新' }}</button><button v-if="updateState.available && updateState.downloadUrl" type="button" class="save-button" :disabled="updateState.installing" @click="installUpdate">{{ updateState.installing ? '下载中…' : '安装更新' }}</button><button v-else-if="updateState.available && updateState.url" type="button" class="subtle-button" @click="openReleasePage">打开下载页</button></div></div></section></template>
         <template v-else-if="activePane === 'data'"><span class="settings-kicker">系统数据</span><h2>备份与数据</h2><p class="settings-lead">备份、恢复或重置这台设备上的数据。</p><BackupPanel /></template>
         <template v-else-if="activePane === 'about'">
