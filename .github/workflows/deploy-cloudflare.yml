@@ -49,8 +49,19 @@ jobs:
         with:
           bun-version-file: package.json
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Install dependencies
         run: bun install --frozen-lockfile --registry=https://registry.npmjs.org/
+
+      - name: Sync quote interfaces
+        run: bun run sync:quotes
+
+      - name: Run tests
+        run: bun run test
 
       - name: Build (syncs quote data and Cloudflare Functions)
         run: bun run build
