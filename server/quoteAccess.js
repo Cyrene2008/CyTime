@@ -53,6 +53,8 @@ export function guardQuoteRequest(handler) {
     const sameOrigin = origin === null && request.headers.get('Sec-Fetch-Site') === 'same-origin'
     if (!carriesMarker || !(permittedOrigin || sameOrigin)) return deny()
     if (!methods.includes(request.method)) return response(request, { error: 'Method Not Allowed' }, 405, { ...cors, Allow: allowedMethodList })
-    return handler(request, (body, status = 200) => response(request, body, status, cors))
+    return Promise.resolve()
+      .then(() => handler(request, (body, status = 200) => response(request, body, status, cors), env))
+      .catch(() => response(request, { error: 'Internal Server Error' }, 500, cors))
   }
 }

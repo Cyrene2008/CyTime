@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { parseJsonc } from '../api/data/jsonc.js'
 import { onRequest as quoteWorker } from '../functions/api/v1/quote/index.js'
 import { onRequest as countWorker } from '../functions/api/v1/quote/count.js'
 import { onRequest as categoriesWorker } from '../functions/api/v1/quote/categories.js'
@@ -10,14 +8,57 @@ import { onRequest as missingApiWorker } from '../functions/api/[[path]].js'
 import { onRequest as timeWorker } from '../functions/api/v1/time.js'
 import { onRequest as weatherWorker } from '../functions/api/xiaomi-weather/[[path]].js'
 
-const catalog = parseJsonc(readFileSync(new URL('../api/data/quotes.jsonc', import.meta.url), 'utf8'))
+const catalog = {
+  崩铁: [
+    { value: '崩铁一', author: '昔涟', from: 'HSR' },
+    { value: '崩铁二', author: '遐蝶', from: 'HSR' }
+  ],
+  幽默解压: [
+    { value: '笑话一', author: '', from: '' },
+    { value: '笑话二', author: '', from: '' }
+  ],
+  名人名言: [
+    { value: '名言一', author: '作者', from: '书' },
+    { value: '名言二', author: '作者', from: '书' }
+  ],
+  人民日报: [
+    { value: '日报一', author: '', from: '' },
+    { value: '日报二', author: '', from: '' }
+  ]
+}
 const categories = Object.keys(catalog)
+const counts = Object.fromEntries(categories.map(category => [category, catalog[category].length]))
+const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
+const meta = { total, categories: counts, updatedAt: '2026-11-28T00:00:00.000Z' }
 const appOrigin = 'https://time.cyrene.hk'
 const marker = { 'X-CyTime-Client': 'cytime-v1' }
 const appHeaders = { ...marker, 'Sec-Fetch-Site': 'same-origin' }
-const request = (path, method = 'GET', headers = appHeaders, target = appOrigin, env) => ({
+
+function createQuoteKv(data = catalog) {
+  const store = new Map()
+  const localCounts = {}
+  for (const [category, list] of Object.entries(data)) {
+    localCounts[category] = list.length
+    store.set(`category:${category}`, JSON.stringify(list))
+  }
+  store.set('meta', JSON.stringify({
+    total: Object.values(localCounts).reduce((sum, count) => sum + count, 0),
+    categories: localCounts,
+    updatedAt: meta.updatedAt
+  }))
+  return {
+    async get(key, options) {
+      const value = store.get(key)
+      if (value === undefined) return null
+      return options?.type === 'json' ? JSON.parse(value) : value
+    }
+  }
+}
+
+const quoteEnv = { QUOTES: createQuoteKv() }
+const request = (path, method = 'GET', headers = appHeaders, target = appOrigin, extraEnv) => ({
   request: new Request(`${target}${path}`, { method, headers }),
-  env
+  env: extraEnv ? { ...quoteEnv, ...extraEnv } : quoteEnv
 })
 const protectedRoutes = [
   ['/api/v1/quote', quoteWorker],
@@ -25,23 +66,26 @@ const protectedRoutes = [
   ['/api/v1/quote/count', countWorker]
 ]
 
-test('generated quote metadata matches the canonical catalog', async () => {
-  const expected = Object.fromEntries(categories.map(category => [category, catalog[category].length]))
-  const total = Object.values(expected).reduce((sum, count) => sum + count, 0)
-  assert.deepEqual((await (await categoriesWorker(request('/api/v1/quote/categories'))).json()).categories, categories)
-  assert.deepEqual(await (await countWorker(request('/api/v1/quote/count'))).json(), { total, categories: expected })
+test('KV metadata matches the fixture catalog', async () => {
+  const categoriesResponse = await categoriesWorker(request('/api/v1/quote/categories'))
+  assert.equal(categoriesResponse.status, 200)
+  assert.deepEqual((await categoriesResponse.json()).categories, categories)
+
+  const countResponse = await countWorker(request('/api/v1/quote/count'))
+  assert.deepEqual(await countResponse.json(), { total, categories: counts })
 })
 
 test('random selection crosses category boundaries with per-quote weighting and ignores repeated filters', async () => {
-  const selected = categories.filter(category => catalog[category].length).slice(0, 2)
-  assert.equal(selected.length, 2)
-  const total = selected.reduce((sum, category) => sum + catalog[category].length, 0)
+  const selected = categories.slice(0, 2)
+  const selectedTotal = selected.reduce((sum, category) => sum + catalog[category].length, 0)
   const old = Math.random
   try {
-    Math.random = () => 0
+    const queue = [0, 0]
+    Math.random = () => queue.shift() ?? 0
     const first = await quoteWorker(request(`/api/v1/quote?category=${encodeURIComponent(selected.join(','))}`))
     assert.equal((await first.json()).value, catalog[selected[0]][0].value)
-    Math.random = () => (catalog[selected[0]].length + 0.5) / total
+
+    queue.push((catalog[selected[0]].length + 0.5) / selectedTotal, 0)
     const response = await quoteWorker(request(`/api/v1/quote?category=${encodeURIComponent([...selected, selected[0]].join(','))}`))
     const body = await response.json()
     assert.equal(body.value, catalog[selected[1]][0].value)
@@ -55,6 +99,16 @@ test('counts reject nonexistent and multiple categories without accepting inheri
   assert.equal(missing.status, 404)
   assert.equal(missing.headers.get('Cache-Control'), 'private, no-store')
   assert.equal((await countWorker(request(`/api/v1/quote/count?category=${encodeURIComponent(categories.join(','))}`))).status, 400)
+})
+
+test('quote routes return 503 when KV is not configured', async () => {
+  for (const [path, handler] of protectedRoutes) {
+    const result = await handler({
+      request: new Request(`${appOrigin}${path}`, { headers: appHeaders }),
+      env: {}
+    })
+    assert.equal(result.status, 503)
+  }
 })
 
 test('each quote route accepts same-origin client requests and CORS from trusted site and desktop origins', async () => {
@@ -132,15 +186,15 @@ test('CORS preflight requires a trusted origin, an allowed method, and the clien
 
 test('only explicitly configured preview and local origins are accepted', async () => {
   const path = '/api/v1/quote'
-  const env = { CYTIME_QUOTE_EXTRA_ORIGINS: 'https://preview.cytime.pages.dev, http://localhost:5173 https://*.example.test https://allow.example.test/path null' }
+  const overrides = { CYTIME_QUOTE_EXTRA_ORIGINS: 'https://preview.cytime.pages.dev, http://localhost:5173 https://*.example.test https://allow.example.test/path null' }
   for (const Origin of ['https://preview.cytime.pages.dev', 'http://localhost:5173']) {
-    const crossOrigin = await quoteWorker(request(path, 'GET', { ...marker, Origin }, appOrigin, env))
+    const crossOrigin = await quoteWorker(request(path, 'GET', { ...marker, Origin }, appOrigin, overrides))
     assert.equal(crossOrigin.status, 200)
     assert.equal(crossOrigin.headers.get('Access-Control-Allow-Origin'), Origin)
-    assert.equal((await quoteWorker(request(path, 'GET', appHeaders, Origin, env))).status, 200)
+    assert.equal((await quoteWorker(request(path, 'GET', appHeaders, Origin, overrides))).status, 200)
   }
   for (const Origin of ['http://localhost:5174', 'https://extra.example.test', 'https://allow.example.test', 'null']) {
-    assert.equal((await quoteWorker(request(path, 'GET', { ...marker, Origin }, appOrigin, env))).status, 403)
+    assert.equal((await quoteWorker(request(path, 'GET', { ...marker, Origin }, appOrigin, overrides))).status, 403)
   }
 })
 

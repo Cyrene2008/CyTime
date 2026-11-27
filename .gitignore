@@ -36,6 +36,10 @@ Thumbs.db
 .env.*
 !.env.example
 
+# Private quote data (uploaded to Cloudflare KV, never committed)
+api/data/quotes.jsonc
+*.private.jsonc
+
 # Testing
 coverage/
 

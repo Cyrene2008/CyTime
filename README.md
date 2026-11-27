@@ -54,7 +54,7 @@ CyTime 就是为这件事做的一只钟：能放在班级大屏、自习室投�
 ```bash
 bun install        # 安装依赖
 bun run dev        # 启动开发服务器
-bun run build      # 构建网页端（会先生成图标、同步语录接口）
+bun run build      # 构建网页端（会先生成图标）
 bun run test       # 跑逻辑与接口测试
 bun run preview    # 预览构建产物
 ```
@@ -72,21 +72,33 @@ bun run tauri:build  # 打包 Windows 安装包（NSIS）
 
 | 顺序 | 服务 | 接口 |
 | --- | --- | --- |
-| 1 | 昔枢 · `api.cyrene.hk` | `/v1/quote` 随机语录 |
+| 1 | 昔枢 · `api.cyrene.hk` | `/v1/quote` 随机语录，另提供 `/v1/quote/categories` 和 `/v1/quote/count` |
 | 2 | 昔言 · `quote.cyrene.hk` | `/api/v1/quote`，另提供 `/categories` 和 `/count` |
-| 3 | 昔时 · `time.cyrene.hk` | 随机语录、分类与数量的最终备用；供 CyTime 客户端使用 |
+| 3 | 昔时 · `time.cyrene.hk` | 随机语录、分类与数量的最终备用；数据来自 Cloudflare KV |
 
 昔时的 Cloudflare 接口只对已允许的 CyTime 页面来源和客户端标记开放，不允许通配跨域访问。需要从自定义预览域访问时，可通过 `CYTIME_QUOTE_EXTRA_ORIGINS` 显式添加精确来源。列出的浏览器来源和公开标记不能验证调用方身份。时间校准仍使用 `/api/v1/time`。
+
+### 昔时语录数据（Cloudflare KV）
+
+昔时的完整语录不再提交到公开仓库，而是放在 Cloudflare KV：
+
+1. 在 Cloudflare Pages 项目的 Functions 绑定里创建一个 KV 命名空间，变量名填 `QUOTES`。
+2. 把私有 `quotes.jsonc` 放在仓库外，运行：
+   `bun run quotes:upload -- "D:\private\quotes.jsonc" <namespace-id>`
+3. 脚本会写入 `meta` 和 `category:<分类>` 键；Function 只从 `env.QUOTES` 读取。
+4. 之后更新语录只需重新上传，不必重新部署代码。
+
+公开仓库只保留接口代码和测试用的小样本；`api/data/quotes.jsonc` 已加入 `.gitignore`，不会再次提交。
 
 ## 项目结构
 
 ```
-api/data/                # 昔时备用语录数据与 JSONC 解析
-functions/               # Cloudflare Pages Functions：备用语录、校时与天气
+api/data/                # JSONC 解析（本地内置语录构建用）
+functions/               # Cloudflare Pages Functions：KV 语录、校时与天气
 server/                  # Cloudflare 语录请求检查
 scripts/
   build-icons.mjs        # 生成实际使用的离线图标子集
-  sync-quote-data.mjs    # 同步语录接口与数据
+  upload-quotes.mjs      # 上传私有语录到 Cloudflare KV
 src/
   components/            # 黑板、备份、值日、作业、课程表导入、语录来源
   composables/           # useDigitBox / useAlmanac / useTypewriter 等
@@ -104,7 +116,8 @@ tests/                   # 持久化、备份、排班、网络、计时分段�
 
 - 网页端走 Cloudflare Pages（Git 集成，生产分支 `Cyrene`），自定义域名 `time.cyrene.hk`
 - 昔枢与昔言独立部署；昔言源码与部署说明见 [Cyrene2008/CyQuote](https://github.com/Cyrene2008/CyQuote)
-- 桌面端用 GitHub Actions 发版：手动触发 `.github/workflows/build-release.yml`，先同步语录、跑网页与 Rust 测试，再构建 NSIS 安装包，最后创建或更新 Release
+- 桌面端用 GitHub Actions 发版：手动触发 `.github/workflows/build-release.yml`，跑网页与 Rust 测试，再构建 NSIS 安装包，最后创建或更新 Release
+- 昔时的 KV 绑定需要在 Cloudflare Pages 项目中配置一次；数据更新用 `bun run quotes:upload`，不需要改代码
 - 版本号以 `src-tauri/tauri.conf.json` 为准，发布出来的就是它
 
 ## 相关项目

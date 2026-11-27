@@ -9,10 +9,10 @@
   "scripts": {
     "dev": "vite",
     "predev": "node scripts/build-icons.mjs",
-    "prebuild": "node scripts/build-icons.mjs && node scripts/sync-quote-data.mjs",
+    "prebuild": "node scripts/build-icons.mjs",
     "build": "vite build",
     "test": "node --test",
-    "sync:quotes": "node scripts/sync-quote-data.mjs",
+    "quotes:upload": "node scripts/upload-quotes.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

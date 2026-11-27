@@ -30,9 +30,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile --registry=https://registry.npmjs.org/
 
-      - name: Sync quote interfaces
-        run: bun run sync:quotes
-
       - name: Run web tests
         run: bun run test
 
