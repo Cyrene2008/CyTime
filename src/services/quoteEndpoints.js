@@ -1,7 +1,9 @@
+// 昔枢没有分类目录接口，这里按线上实例实际支持的分类维护。
+// 文档：https://api.cyrene.hk/docs/v1-quote
 export const quoteApiEndpoints = [
-  { id: 'xishu', label: '昔枢', host: 'api.cyrene.hk', path: '/v1/quote', catalog: false },
-  { id: 'xiyan', label: '昔言', host: 'quote.cyrene.hk', path: '/api/v1/quote', catalog: true },
-  { id: 'xishi', label: '昔时', host: 'time.cyrene.hk', path: '/api/v1/quote', catalog: true }
+  { id: 'xishu', label: '昔枢', host: 'api.cyrene.hk', path: '/v1/quote', catalog: false, categories: ['人民日报', '名人名言', '崩铁', '英语'] },
+  { id: 'xiyan', label: '昔言', host: 'quote.cyrene.hk', path: '/api/v1/quote', catalog: true, categories: ['人民日报', '名人名言', '崩铁', '幽默解压'] },
+  { id: 'xishi', label: '昔时', host: 'time.cyrene.hk', path: '/api/v1/quote', catalog: true, categories: ['人民日报', '名人名言', '崩铁', '幽默解压'] }
 ]
 
 export const defaultQuoteApiEndpoint = quoteApiEndpoints[0].id

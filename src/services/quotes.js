@@ -23,10 +23,13 @@ async function fetchQuoteApi(preferred, signal, route, parse) {
 }
 
 function quoteQuery(endpoint, categories) {
+  // 只把该服务支持的分类发出去；一个都不支持时直接跳过，避免无意义的 404。
+  const supported = endpoint.categories ? categories.filter(category => endpoint.categories.includes(category)) : categories
+  if (categories.length && endpoint.categories && !supported.length) return null
   const query = new URLSearchParams(endpoint.id === 'xishu' ? { count: '1' } : { format: 'json' })
   if (endpoint.id === 'xishu') {
-    for (const category of categories) query.append('category', category)
-  } else if (categories.length) query.set('category', categories.join(','))
+    for (const category of supported) query.append('category', category)
+  } else if (supported.length) query.set('category', supported.join(','))
   return `?${query}`
 }
 
@@ -35,6 +38,9 @@ export function fetchCloudQuote(signal, categories = [], preferred) {
   return fetchQuoteApi(preferred, signal, endpoint => quoteQuery(endpoint, selected), (payload, endpoint) => {
     const quote = typeof payload?.value === 'string' ? payload.value.trim() : ''
     if (!quote || BLOCKED_TERMS.some(term => quote.includes(term))) throw new Error('语录内容无效')
+    // 备用服务会把不认识的分类过滤后当成“全库”；用响应里的 category 再确认一次。
+    const returned = Array.isArray(payload?.category) ? payload.category.filter(item => typeof item === 'string') : []
+    if (selected.length && !returned.some(category => selected.includes(category))) throw new Error('语录分类不匹配')
     return {
       text: quote,
       author: typeof payload.author === 'string' ? payload.author.trim() : '',

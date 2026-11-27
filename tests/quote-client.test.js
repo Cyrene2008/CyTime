@@ -13,19 +13,73 @@ test('the three providers fall back in order on invalid data or HTTP failure', a
     calls.push([url, options])
     if (url.hostname === 'api.cyrene.hk') return Response.json({ value: ' ' })
     if (url.hostname === 'quote.cyrene.hk') return new Response(null, { status: 503 })
-    return Response.json({ value: ' 懂得休息，才有余力前行。 ', author: ' 作者 ', from: '' })
+    return Response.json({ value: ' 懂得休息，才有余力前行。 ', author: ' 作者 ', from: '', category: ['崩铁', '幽默解压'] })
   })
 
   const quote = await fetchCloudQuote(undefined, ['崩铁', '幽默解压', '崩铁'])
   assert.deepEqual(quote, { text: '懂得休息，才有余力前行。', author: '作者', work: '', source: 'xishi', sourceName: '昔时' })
   assert.deepEqual(calls.map(([url]) => url.hostname), ['api.cyrene.hk', 'quote.cyrene.hk', 'time.cyrene.hk'])
   assert.deepEqual(calls.map(([url]) => url.pathname), ['/v1/quote', '/api/v1/quote', '/api/v1/quote'])
-  assert.deepEqual(calls[0][0].searchParams.getAll('category'), ['崩铁', '幽默解压'])
+  assert.deepEqual(calls[0][0].searchParams.getAll('category'), ['崩铁'])
   assert.equal(calls[1][0].searchParams.get('category'), '崩铁,幽默解压')
   assert.equal(calls[1][0].searchParams.get('format'), 'json')
   assert.equal(calls[0][1].headers, undefined)
   assert.equal(calls[1][1].headers, undefined)
   assert.equal(new Headers(calls[2][1].headers).get('X-CyTime-Client'), 'cytime-v1')
+})
+
+test('xishu only receives the categories it actually supports', async t => {
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(input)
+    calls.push(url)
+    return Response.json({ value: '来自昔枢', category: ['崩铁'] })
+  })
+
+  const quote = await fetchCloudQuote(undefined, ['崩铁', '幽默解压'])
+  assert.equal(quote.source, 'xishu')
+  assert.deepEqual(calls.map(url => url.hostname), ['api.cyrene.hk'])
+  assert.deepEqual(calls[0].searchParams.getAll('category'), ['崩铁'])
+})
+
+test('a category missing from xishu falls through without calling it', async t => {
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(input)
+    calls.push(url)
+    return Response.json({ value: '笑话', category: ['幽默解压'] })
+  })
+
+  const quote = await fetchCloudQuote(undefined, ['幽默解压'])
+  assert.equal(quote.source, 'xiyan')
+  assert.deepEqual(calls.map(url => url.hostname), ['quote.cyrene.hk'])
+  assert.equal(calls[0].searchParams.get('category'), '幽默解压')
+})
+
+test('fallback providers only receive the categories they support', async t => {
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(input)
+    calls.push(url)
+    if (url.hostname === 'api.cyrene.hk') return new Response(null, { status: 503 })
+    return Response.json({ value: '中文', category: ['崩铁'] })
+  })
+
+  const quote = await fetchCloudQuote(undefined, ['崩铁', '英语'])
+  assert.equal(quote.source, 'xiyan')
+  assert.equal(calls[1].searchParams.get('category'), '崩铁')
+})
+
+test('a quote outside the selected categories is rejected', async t => {
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(input)
+    calls.push(url)
+    return Response.json({ value: '中文', category: ['崩铁'] })
+  })
+
+  await assert.rejects(fetchCloudQuote(undefined, ['英语']), /分类不匹配/)
+  assert.deepEqual(calls.map(url => url.hostname), ['api.cyrene.hk'])
 })
 
 test('formerly unsupported metadata is fetched from the first compatible service', async t => {
