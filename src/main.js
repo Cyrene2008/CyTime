@@ -10,6 +10,7 @@ import { useSettingsStore } from './stores/settings'
 import App from './App.vue'
 import ClockView from './views/ClockView.vue'
 import './styles/app.css'
+import './styles/display-layout.css'
 
 addCollection(fluentIcons)
 
@@ -72,6 +73,7 @@ async function syncServiceWorker() {
   })
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(registration => {
+      if (!registration) return
       const check = () => registration.update().catch(() => {})
       window.setTimeout(check, 5000)
       window.setInterval(check, 10 * 60 * 1000)

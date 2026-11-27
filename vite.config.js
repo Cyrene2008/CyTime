@@ -66,17 +66,12 @@ export default defineConfig({
       workbox: {
         cacheId: `cytime-${pkg.version}-${buildId || 'dev'}`,
         cleanupOutdatedCaches: true,
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api(?:[/?]|$)/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/weatherapi\.market\.xiaomi\.com\//,
             handler: 'NetworkFirst',
             options: { cacheName: 'cytime-weather', networkTimeoutSeconds: 8, expiration: { maxEntries: 12, maxAgeSeconds: 60 * 60 } }
-          },
-          {
-            urlPattern: /^https:\/\/v1\.hitokoto\.cn\//,
-            handler: 'NetworkFirst',
-            options: { cacheName: 'cytime-quotes', networkTimeoutSeconds: 6, expiration: { maxEntries: 10, maxAgeSeconds: 24 * 60 * 60 } }
           }
         ]
       }

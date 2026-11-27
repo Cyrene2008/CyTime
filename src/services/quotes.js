@@ -1,75 +1,64 @@
-import { fetchJson } from './desktop'
+import { fetchJson } from './desktop.js'
+import { quoteApiEndpoints, quoteApiOrder } from './quoteEndpoints.js'
 
-export const quoteApiEndpoints = [
-  { id: 'cf', label: '昔时源', base: 'https://time.cyrene.hk/api/v1/quote' },
-  { id: 'server', label: '昔言源', base: 'https://quote.cyrene.hk/api/v1/quote' }
-]
+const cyTimeClientHeader = { 'X-CyTime-Client': 'cytime-v1' }
+const BLOCKED_TERMS = ['色情', '赌博', '毒品', '暴力恐怖']
 
-export function quoteApiOrder(preferred = 'cf') {
-  return preferred === 'server' ? ['server', 'cf'] : ['cf', 'server']
-}
-
-async function fetchQuoteApi(path, signal, preferred = 'cf') {
+async function fetchQuoteApi(preferred, signal, route, parse) {
   let lastError
   for (const id of quoteApiOrder(preferred)) {
     const endpoint = quoteApiEndpoints.find(item => item.id === id)
-    if (!endpoint) continue
+    const suffix = route(endpoint)
+    if (suffix === null) continue
+    const options = { timeoutMs: 4500 }
+    if (endpoint.id === 'xishi') options.headers = cyTimeClientHeader
     try {
-      return await fetchJson(`${endpoint.base}${path}`, signal)
+      return parse(await fetchJson(`https://${endpoint.host}${endpoint.path}${suffix}`, signal, options), endpoint)
     } catch (error) {
-      if (error?.name === 'AbortError') throw error
+      if (signal?.aborted || error?.name === 'AbortError') throw error
       lastError = error
     }
   }
-  throw lastError || new Error('Quote API unavailable')
+  throw lastError || new Error('语录服务暂不可用')
 }
 
-export const quoteSourceOptions = {
-  cytime: { label: 'CyQuote 昔言', language: '中文', description: '昔言精选语录', url: 'https://time.cyrene.hk/api/v1/quote?format=json' },
-  hitokoto: { label: '一言', language: '中文', description: '综合短句与名人语录', url: 'https://v1.hitokoto.cn/?encode=json' },
-  jinrishici: { label: '今日诗词', language: '中文', description: '古诗词与作者出处', url: 'https://v1.jinrishici.com/all.json' },
-  poetry: { label: '诗泉', language: '中文', description: '古诗词与出处', url: 'https://poetry.palemoky.com/api/poems/random?lang=zh-Hans' },
-  vvhan: { label: 'VVHAN 智慧语录', language: '中文', description: '励志与学习短句', url: 'https://api.vvhan.com/api/wisdom?type=json' },
-  xygeng: { label: '一言一语', language: '中文', description: '随机语录与作品信息', url: 'https://api.xygeng.cn/one' },
-  adviceSlip: { label: 'Advice Slip', language: 'English', description: '英文建议与生活提示', url: 'https://api.adviceslip.com/advice' }
+function quoteQuery(endpoint, categories) {
+  const query = new URLSearchParams(endpoint.id === 'xishu' ? { count: '1' } : { format: 'json' })
+  if (endpoint.id === 'xishu') {
+    for (const category of categories) query.append('category', category)
+  } else if (categories.length) query.set('category', categories.join(','))
+  return `?${query}`
 }
 
-const BLOCKED_TERMS = ['色情', '赌博', '毒品', '暴力恐怖']
-
-export async function fetchCloudQuote(source = 'hitokoto', signal, categories = [], preferred = 'cf') {
-  const sourceConfig = quoteSourceOptions[source] || quoteSourceOptions.hitokoto
-  let data
-  if (source === 'cytime') {
-    const suffix = categories.length ? `?format=json&category=${encodeURIComponent(categories.join(','))}` : '?format=json'
-    data = await fetchQuoteApi(suffix, signal, preferred)
-  } else {
-    data = await fetchJson(sourceConfig.url, signal)
-  }
-  const payload = data?.data && typeof data.data === 'object' ? data.data : data
-  const quote = String(payload.hitokoto || payload.content || payload.quote || payload.text || payload.value || payload.advice || payload.slip?.advice || payload.poem || '').trim()
-  if (!quote) throw new Error('Empty quote response')
-  if (BLOCKED_TERMS.some(term => quote.includes(term))) throw new Error('Unsafe quote response')
-  return {
-    text: quote,
-    author: String(payload.from_who || payload.author || payload.creator || '').trim(),
-    work: String(payload.origin || payload.from || payload.book || payload.title || '').trim(),
-    source,
-    sourceName: sourceConfig.label
-  }
+export function fetchCloudQuote(signal, categories = [], preferred) {
+  const selected = [...new Set(categories.filter(category => typeof category === 'string' && category.trim()).map(category => category.trim()))]
+  return fetchQuoteApi(preferred, signal, endpoint => quoteQuery(endpoint, selected), (payload, endpoint) => {
+    const quote = typeof payload?.value === 'string' ? payload.value.trim() : ''
+    if (!quote || BLOCKED_TERMS.some(term => quote.includes(term))) throw new Error('语录内容无效')
+    return {
+      text: quote,
+      author: typeof payload.author === 'string' ? payload.author.trim() : '',
+      work: typeof payload.from === 'string' ? payload.from.trim() : '',
+      source: endpoint.id,
+      sourceName: endpoint.label
+    }
+  })
 }
 
-export async function fetchQuoteCategories(signal, preferred = 'cf') {
-  const response = await fetchQuoteApi('/categories', signal, preferred)
-  return Array.isArray(response?.categories) ? response.categories.map(String).filter(Boolean) : []
+// 昔枢只提供语录正文，分类列表和统计从支持这些接口的服务读取。
+export function fetchQuoteCategories(signal, preferred) {
+  return fetchQuoteApi(preferred, signal, endpoint => endpoint.catalog ? '/categories' : null, response => {
+    if (!Array.isArray(response?.categories)) throw new Error('语录分类格式无效')
+    return response.categories.filter(item => typeof item === 'string' && item.trim())
+  })
 }
 
-export async function fetchQuoteStats(signal, preferred = 'cf') {
-  const response = await fetchQuoteApi('/count', signal, preferred)
-  const total = Number(response?.total)
-  return {
-    total: Number.isFinite(total) ? total : 0,
-    categories: response?.categories && typeof response.categories === 'object' ? response.categories : {}
-  }
+export function fetchQuoteStats(signal, preferred) {
+  return fetchQuoteApi(preferred, signal, endpoint => endpoint.catalog ? '/count' : null, response => {
+    const { total, categories } = response || {}
+    if (!Number.isInteger(total) || total < 0 || !categories || typeof categories !== 'object' || Array.isArray(categories)) throw new Error('语录统计格式无效')
+    return { total, categories }
+  })
 }
 
 export async function readQuoteFile(file) {

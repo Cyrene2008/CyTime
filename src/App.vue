@@ -91,14 +91,36 @@ const navItems = [
   { path: '/timer', label: '计时器', icon: 'timer-20-regular' }
 ]
 const activeTaskCount = computed(() => timeStore.activeCountdowns.length + timeStore.activeTimers.length)
-const sideLayoutQuery = typeof window === 'undefined' ? null : window.matchMedia('(min-width: 621px)')
-const homeworkVisible = computed(() => settingsStore.settings.showHomework && !settingsStore.examModeActive && !(desktopAvailable.value && ['normal', 'mini'].includes(desktopWindowMode.value)))
-const taskSide = computed(() => homeworkVisible.value && settingsStore.settings.homeworkPosition === 'right' ? 'left' : 'right')
-const wideLayout = ref(sideLayoutQuery?.matches ?? true)
-const blackboardActive = computed(() => route.path === '/time' && !isSettings.value && settingsStore.settings.showBlackboard && !settingsStore.examModeActive && !(desktopAvailable.value && ['normal', 'mini'].includes(desktopWindowMode.value)) && (wideLayout.value || !settingsStore.settings.showHomework))
+const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
+const uiScale = computed(() => Math.max(.5, Math.min(2, Number(settingsStore.settings.uiScale) / 100 || 1)))
+const stageWidth = computed(() => viewport.value.width / uiScale.value)
+const stageHeight = computed(() => viewport.value.height / uiScale.value)
+const narrowLayout = computed(() => stageWidth.value <= 850)
+const displayLayout = computed(() => settingsStore.settings.displayLayout || 'auto')
+const classroomLayout = computed(() => {
+  if (desktopMini.value || displayLayout.value === 'desktop') return false
+  const [width, height] = displayLayout.value === 'classroom' ? [1024, 700] : [1440, 840]
+  return stageWidth.value >= width && stageHeight.value >= height
+})
+const stageReadScale = computed(() => classroomLayout.value
+  ? Math.max(1.24, Math.min(1.8, stageWidth.value / 1270, stageHeight.value / 690))
+  : 1)
+const allowBoards = computed(() => !settingsStore.examModeActive && !desktopMini.value && !(desktopAvailable.value && ['normal', 'mini'].includes(desktopWindowMode.value)))
+const homeworkEnabled = computed(() => allowBoards.value && settingsStore.settings.showHomework)
+const blackboardEnabled = computed(() => allowBoards.value && settingsStore.settings.showBlackboard)
+const compactBoards = computed(() => narrowLayout.value && (homeworkEnabled.value || blackboardEnabled.value))
+const compactClock = computed(() => route.path === '/time' && compactBoards.value)
+const switchableBoards = computed(() => narrowLayout.value && homeworkEnabled.value && blackboardEnabled.value)
+const selectedBoard = ref('homework')
+const homeworkShown = computed(() => homeworkEnabled.value && (!switchableBoards.value || selectedBoard.value === 'homework'))
+const blackboardShown = computed(() => blackboardEnabled.value && (!switchableBoards.value || selectedBoard.value === 'blackboard'))
+provide('cytimeClassroomBoards', { homeworkEnabled, blackboardEnabled, homeworkShown, blackboardShown, compactBoards, switchableBoards, selectedBoard })
+const taskSide = computed(() => homeworkShown.value && settingsStore.settings.homeworkPosition === 'right' ? 'left' : 'right')
+const blackboardActive = computed(() => route.path === '/time' && !isSettings.value && blackboardShown.value)
 
-function syncWideLayout(event) {
-  wideLayout.value = event.matches
+function syncViewport() {
+  viewport.value = { width: window.innerWidth, height: window.innerHeight }
+  nextTick(syncContentSafeTop)
 }
 
 function updateTaskOverflow() {
@@ -107,12 +129,14 @@ function updateTaskOverflow() {
     taskOverflow.value = false
     return
   }
-  if (sideLayoutQuery?.matches) {
+  if (!narrowLayout.value) {
     taskOverflow.value = false
     return
   }
-  const cardWidth = window.matchMedia('(max-width: 620px)').matches ? 145 : 168
+  const cardWidth = element.querySelector('.task-widget')?.offsetWidth ?? 145
   const gap = 8
+  const bottom = parseFloat(getComputedStyle(element).bottom) || 0
+  shellRef.value?.style.setProperty('--board-task-clearance', `${Math.ceil(bottom + element.offsetHeight + gap)}px`)
   taskOverflow.value = activeTaskCount.value * cardWidth + Math.max(0, activeTaskCount.value - 1) * gap > element.clientWidth
 }
 
@@ -127,15 +151,17 @@ function syncContentSafeTop() {
     if (settingsStore.examModeActive && element === navRef.value) return 0
     return (element.getBoundingClientRect().bottom - shellRect.top) / scale
   }
-  const safeTop = Math.max(bottomOf(statusDockRef.value), bottomOf(navRef.value))
-  shell.style.setProperty('--content-safe-top', `${Math.max(0, Math.ceil(safeTop + 10))}px`)
-  shell.style.setProperty('--nav-safe-top', `${Math.ceil(bottomOf(statusDockRef.value) + 12)}px`)
   if (statusDockRef.value) {
     const dockWidth = statusDockRef.value.offsetWidth
     const maxScale = dockWidth > 0 ? shell.offsetWidth / dockWidth : 1
     const userScale = (Number(settingsStore.settings.statusDockScale) || 100) / 100
     shell.style.setProperty('--status-dock-scale', String(Math.min(userScale, maxScale)))
   }
+  const statusBottom = bottomOf(statusDockRef.value)
+  shell.style.setProperty('--stage-status-clearance', `${Math.max(80, Math.ceil(statusBottom + 14))}px`)
+  shell.style.setProperty('--nav-safe-top', `${Math.ceil(statusBottom + 12)}px`)
+  const safeTop = Math.max(statusBottom, bottomOf(navRef.value))
+  shell.style.setProperty('--content-safe-top', `${Math.max(0, Math.ceil(safeTop + 10))}px`)
   updateViewPadding()
 }
 
@@ -153,6 +179,7 @@ function updateViewPadding() {
   const navBottom = !settingsStore.examModeActive && navRef.value ? (navRef.value.getBoundingClientRect().bottom - shellRect.top) / scale : 0
   const safeTop = Math.max(0, dockBottom, navBottom) + 10
   for (const view of shell.querySelectorAll('.clock-view, .focus-view')) {
+    if (view.classList.contains('compact-boards')) { view.style.paddingTop = ''; continue }
     const viewHeight = view.offsetHeight
     const padBottom = parseFloat(getComputedStyle(view).paddingBottom) || 0
     const children = [...view.children].filter(element => {
@@ -572,22 +599,20 @@ onMounted(async () => {
   showControlsHandler()
   window.__cytimeShowControls = showControlsHandler
   taskResizeObserver = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(updateTaskOverflow)
-  stopTaskWatch = watch([activeTaskCount, () => settingsStore.examModeActive], async () => {
-    await nextTick()
+  stopTaskWatch = watch([activeTaskCount, taskDock, narrowLayout, () => settingsStore.settings.taskCardScale], () => {
     taskResizeObserver?.disconnect()
     if (taskDock.value) taskResizeObserver?.observe(taskDock.value)
     updateTaskOverflow()
-  })
+  }, { flush: 'post' })
   nextTick(() => {
     if (taskDock.value) taskResizeObserver?.observe(taskDock.value)
     updateTaskOverflow()
   })
   safeAreaObserver = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(syncContentSafeTop)
-  window.addEventListener('resize', syncContentSafeTop)
-  sideLayoutQuery?.addEventListener('change', updateTaskOverflow)
-  sideLayoutQuery?.addEventListener('change', syncWideLayout)
+  window.addEventListener('resize', syncViewport)
+  syncViewport()
   disposePopupFit = installPopupFit()
-  stopSafeAreaWatch = watch([isSettings, () => settingsStore.examModeActive, () => settingsStore.settings.statusDockScale, () => settingsStore.settings.statusDockOffsetY, () => settingsStore.settings.uiScale], async () => {
+  stopSafeAreaWatch = watch([isSettings, () => route.path, compactBoards, stageReadScale, () => settingsStore.examModeActive, () => settingsStore.settings.statusDockScale, () => settingsStore.settings.statusDockOffsetY, uiScale], async () => {
     await nextTick()
     observeSafeAreas()
   })
@@ -629,9 +654,7 @@ onUnmounted(() => {
   }
   document.removeEventListener('visibilitychange', syncAfterVisibilityChange)
   window.removeEventListener('focus', syncAfterVisibilityChange)
-  window.removeEventListener('resize', syncContentSafeTop)
-  sideLayoutQuery?.removeEventListener('change', updateTaskOverflow)
-  sideLayoutQuery?.removeEventListener('change', syncWideLayout)
+  window.removeEventListener('resize', syncViewport)
   disposePopupFit?.()
   taskResizeObserver?.disconnect()
   safeAreaObserver?.disconnect()
@@ -660,7 +683,7 @@ onUnmounted(() => {
 <template>
   <div class="app-root" :class="{ 'is-desktop': desktopAvailable, 'titlebar-hidden': desktopAvailable && fullscreenActive }">
     <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" data-tauri-drag-region><span data-tauri-drag-region>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button v-if="!desktopMini" type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
-    <div class="app-shell" ref="shellRef" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, [`window-mode-${desktopWindowMode}`]: desktopAvailable }">
+    <div class="app-shell" ref="shellRef" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, 'with-compact-boards': compactClock, 'short-stage': stageHeight < 700, 'compact-footer': stageWidth <= 620, [`window-mode-${desktopWindowMode}`]: desktopAvailable }" :data-display-layout="displayLayout" :data-effective-layout="classroomLayout ? 'classroom' : 'desktop'" :style="{ '--stage-read-scale': stageReadScale }">
     <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息">
       <div v-if="settingsStore.settings.showWeather" class="status-weather"><strong>{{ weatherTemperature }}°</strong><FluentIcon icon="weather-partly-cloudy-day-20-regular" :width="18" /><span>{{ weatherStatus }}</span></div>
       <div v-if="settingsStore.settings.showDayProgress" class="status-progress"><span>今日进度</span><div class="status-progress-bar"><i :style="{ width: `${progress}%` }"></i></div><strong>{{ progress.toFixed(0) }}%</strong></div>
@@ -672,14 +695,14 @@ onUnmounted(() => {
     <main class="clock-stage"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><component :is="Component" /></Transition></RouterView></main>
     <template v-if="!isSettings">
       <footer class="clock-footer">
-        <button type="button" class="footer-action footer-settings" aria-label="设置" @click="openSettings()"><FluentIcon icon="settings-20-regular" :width="19" /></button>
+        <button type="button" class="footer-action footer-settings" aria-label="设置" title="设置" @click="openSettings()"><FluentIcon icon="settings-20-regular" :width="19" /></button>
         <div class="footer-center-actions"><button type="button" class="footer-action" :aria-label="fullscreenActive ? '退出全屏' : '全屏'" @click="toggleFullscreen"><FluentIcon :icon="fullscreenActive ? 'full-screen-minimize-20-regular' : 'full-screen-maximize-20-regular'" :width="19" /><span>{{ fullscreenActive ? '退出全屏' : '全屏' }}</span></button><button type="button" class="footer-action" :aria-label="settingsStore.examModeActive ? '退出纯净模式' : '纯净/考试模式'" @click="settingsStore.examModeActive ? exitExamMode() : schedulePurePrompt()"><FluentIcon :icon="settingsStore.examModeActive ? 'eye-20-filled' : 'eye-off-20-regular'" :width="19" /><span>{{ settingsStore.examModeActive ? '退出纯净' : '纯净模式' }}</span></button></div>
       </footer>
       <div class="app-meta">
         <a class="app-signature" href="https://github.com/Cyrene2008/CyTime" target="_blank" rel="noreferrer">v{{ appVersion }}<span v-if="buildId"> (build {{ buildId }})</span> by Cyrene2008</a>
         <a v-if="FILING_NAME" class="app-filing" :href="FILING_URL" target="_blank" rel="noreferrer">{{ FILING_NAME }}</a>
       </div>
-      <div v-if="activeTaskCount && !settingsStore.examModeActive && !blackboardActive" ref="taskDock" class="task-docks" :class="['is-side', `task-docks-${taskSide}`, { 'is-marquee': taskOverflow }]"><div class="task-docks-track"><template v-for="copy in taskOverflow ? 2 : 1" :key="copy"><RouterLink v-for="task in timeStore.activeCountdowns" :key="`${copy}-${task.id}`" to="/countdown" class="task-widget task-widget-countdown" @click="timeStore.selectCountdown(task)"><span class="task-dot pink"></span><span>{{ task.label }}</span><strong>{{ formatDuration(countdownRemaining(task)) }}</strong></RouterLink><RouterLink v-for="task in timeStore.activeTimers" :key="`${copy}-${task.id}-timer`" to="/timer" class="task-widget task-widget-timer" @click="timeStore.selectTimer(task)"><span class="task-dot green"></span><span>{{ task.label }}</span><strong>{{ formatDuration(timeStore.timerElapsed(task)) }}</strong></RouterLink></template></div></div>
+      <div v-if="activeTaskCount && !settingsStore.examModeActive && !blackboardActive" ref="taskDock" class="task-docks" :class="['is-side', `task-docks-${taskSide}`, { 'is-compact': narrowLayout, 'is-marquee': taskOverflow }]"><div class="task-docks-track"><template v-for="copy in taskOverflow ? 2 : 1" :key="copy"><RouterLink v-for="task in timeStore.activeCountdowns" :key="`${copy}-${task.id}`" to="/countdown" class="task-widget task-widget-countdown" @click="timeStore.selectCountdown(task)"><span class="task-dot pink"></span><span>{{ task.label }}</span><strong>{{ formatDuration(countdownRemaining(task)) }}</strong></RouterLink><RouterLink v-for="task in timeStore.activeTimers" :key="`${copy}-${task.id}-timer`" to="/timer" class="task-widget task-widget-timer" @click="timeStore.selectTimer(task)"><span class="task-dot green"></span><span>{{ task.label }}</span><strong>{{ formatDuration(timeStore.timerElapsed(task)) }}</strong></RouterLink></template></div></div>
       <Transition name="notice"><div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div></Transition>
       <Transition name="pure-prompt"><div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净模式提示"><div class="pure-prompt-card"><h2>进入纯净模式？</h2><p>天气、作业板和语录会暂时收起，只留下安静的时间画面，适合考试、自习或投屏。进入后可随时退出。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">暂不进入 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div></Transition>
     </template>

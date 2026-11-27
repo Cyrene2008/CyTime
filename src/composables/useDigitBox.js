@@ -15,6 +15,7 @@ export function useDigitBox(elementRef, sources = []) {
     for (let digit = 0; digit <= 9; digit += 1) max = Math.max(max, context.measureText(String(digit)).width)
     const fontSize = parseFloat(style.fontSize) || 1
     if (max > 0) element.style.setProperty('--clock-digit-ratio', String(max / fontSize))
+    element.style.setProperty('--clock-separator-ratio', String(context.measureText(':').width / fontSize + .1))
   }
 
   const schedule = () => nextTick(measure)

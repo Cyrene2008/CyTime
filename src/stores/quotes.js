@@ -42,27 +42,19 @@ export const useQuotesStore = defineStore('quotes', () => {
       { id: 'university', name: '大学校训', quotes: contentStore.content.universityMottos, weight: settings.quoteLocalSources?.university?.weight ?? 2, enabled: settings.quoteLocalSources?.university?.enabled ?? true }
     ].filter(item => item.enabled && item.quotes.length && weight(item.weight) > 0)
     const localWeight = localSources.reduce((sum, item) => sum + weight(item.weight), 0)
-    const sources = Object.entries(settings.quoteSources || {}).filter(([, option]) => option?.enabled && weight(option.weight) > 0)
     const cloudWeight = settings.quoteCloudEnabled ? weight(settings.quoteCloudWeight) : 0
-    const useCloud = sources.length > 0 && cloudWeight > 0 && Math.random() * (localWeight + cloudWeight) >= localWeight
+    const useCloud = cloudWeight > 0 && Math.random() * (localWeight + cloudWeight) >= localWeight
     if (useCloud) {
-      const available = [...sources]
-      const totalWeight = available.reduce((sum, [, option]) => sum + weight(option.weight), 0)
-      let target = Math.random() * totalWeight
-      const selected = available.find(([, option]) => (target -= weight(option.weight)) < 0)?.[0]
-      const ordered = [selected, ...available.map(([id]) => id).filter(id => id !== selected)]
       const apiCategories = resolveApiCategories(settings)
-      for (const sourceId of ordered) {
-        try {
-          const result = await fetchCloudQuote(sourceId, controller.signal, apiCategories, settings.quoteApiEndpoint)
-          if (request !== generation || controller.signal.aborted) return
-          current.value = result.text
-          source.value = 'cloud'
-          metadata.value = { source: 'cloud', sourceName: result.sourceName, author: result.author, work: result.work }
-          return
-        } catch (error) {
-          if (request !== generation || controller.signal.aborted || error?.name === 'AbortError') return
-        }
+      try {
+        const result = await fetchCloudQuote(controller.signal, apiCategories, settings.quoteApiEndpoint)
+        if (request !== generation || controller.signal.aborted) return
+        current.value = result.text
+        source.value = 'cloud'
+        metadata.value = { source: 'cloud', sourceName: result.sourceName, author: result.author, work: result.work }
+        return
+      } catch (error) {
+        if (request !== generation || controller.signal.aborted || error?.name === 'AbortError') return
       }
     }
     if (request !== generation || controller.signal.aborted) return
@@ -100,7 +92,7 @@ export const useQuotesStore = defineStore('quotes', () => {
     requestController?.abort()
   }
 
-  watch(() => [settingsStore.settings.quoteRotation, settingsStore.settings.quoteInterval, settingsStore.settings.quoteCloudEnabled, settingsStore.settings.quoteLocalSources, settingsStore.settings.quoteSources, settingsStore.settings.quoteApiCategories, settingsStore.settings.quoteApiCategoryWeights, settingsStore.settings.quoteApiCategoryWeightsEnabled, settingsStore.settings.quoteApiEndpoint], () => {
+  watch(() => [settingsStore.settings.quoteRotation, settingsStore.settings.quoteInterval, settingsStore.settings.quoteCloudEnabled, settingsStore.settings.quoteCloudWeight, settingsStore.settings.quoteLocalSources, settingsStore.settings.quoteApiCategories, settingsStore.settings.quoteApiCategoryWeights, settingsStore.settings.quoteApiCategoryWeightsEnabled, settingsStore.settings.quoteApiEndpoint], () => {
     if (!started) return
     stop()
     start()

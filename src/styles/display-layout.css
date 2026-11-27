@@ -1,0 +1,195 @@
+/* The side boards and the clock use the same space budget. */
+.app-shell {
+  --stage-width: calc(100vw / var(--ui-scale, 1));
+  --stage-height: calc(100vh / var(--ui-scale, 1));
+  --stage-gutter: clamp(14px, calc(var(--stage-width) * .018), 52px);
+  --stage-column-gap: clamp(14px, calc(var(--stage-width) * .017), 36px);
+  --stage-panel-scale: calc(1 + (var(--stage-read-scale, 1) - 1) * .8);
+  --side-width-limit: calc(var(--stage-width) * .24);
+  --homework-side-width: min(var(--side-width-limit), calc(var(--homework-width, 300px) * var(--stage-panel-scale)));
+  --blackboard-side-width: min(var(--side-width-limit), calc(var(--blackboard-width, 290px) * var(--stage-panel-scale)));
+  --task-side-width: min(var(--side-width-limit), calc(190px * var(--stage-panel-scale) * max(1, var(--task-card-scale, 1))));
+  --task-row-width: clamp(145px, calc(145px * var(--task-card-scale, 1)), 235px);
+  --board-edge: max(0px, calc(var(--stage-gutter) - var(--homework-offset-x, 0px)));
+}
+
+.clock-view {
+  --center-left: 24px;
+  --center-right: 24px;
+  --center-width: calc(var(--stage-width) - var(--center-left) - var(--center-right));
+  --detail-scale: calc(var(--stage-read-scale, 1) * var(--clock-detail-scale, 1));
+  --clock-unit: 16px;
+  --clock-stretch: 1;
+  --clock-height-limit: .31;
+}
+html[data-font="wengfaluosi"] .clock-view { --clock-unit: 19px; --clock-stretch: 1.08; }
+.clock-view:not(.compact-boards) { padding-inline: var(--center-left) var(--center-right); }
+.clock-view.compact-boards { --center-left: 18px; --center-right: 18px; --clock-height-limit: .15; }
+.clock-view:not(.compact-boards):has(.homework-left) { --left-homework: calc(var(--board-edge) + var(--homework-side-width)); }
+.clock-view:not(.compact-boards):has(.homework-right) { --right-homework: calc(var(--board-edge) + var(--homework-side-width)); }
+.clock-view:not(.compact-boards):has(.blackboard-left) { --left-blackboard: calc(var(--board-edge) + var(--blackboard-side-width)); }
+.clock-view:not(.compact-boards):has(.blackboard-right) { --right-blackboard: calc(var(--board-edge) + var(--blackboard-side-width)); }
+.app-shell:has(.task-docks-left:not(.is-compact)) .clock-view:not(.compact-boards) { --left-task: calc(var(--stage-gutter) + var(--task-side-width)); }
+.app-shell:has(.task-docks-right:not(.is-compact)) .clock-view:not(.compact-boards) { --right-task: calc(var(--stage-gutter) + var(--task-side-width)); }
+.clock-view:not(.compact-boards) {
+  --center-left: max(24px, calc(max(var(--left-task, 0px), var(--left-homework, 0px), var(--left-blackboard, 0px)) + var(--stage-column-gap)));
+  --center-right: max(24px, calc(max(var(--right-task, 0px), var(--right-homework, 0px), var(--right-blackboard, 0px)) + var(--stage-column-gap)));
+}
+.clock-view:not(.compact-boards) .homework-panel {
+  --homework-reserved-top: max(var(--homework-safe-top, 80px), var(--stage-status-clearance, 80px));
+  top: var(--homework-reserved-top);
+  width: var(--homework-side-width);
+  max-height: calc(100% - var(--homework-reserved-top) - var(--homework-safe-bottom, 76px));
+}
+.clock-view:not(.compact-boards) .blackboard-panel {
+  top: var(--stage-status-clearance, var(--homework-top, 80px));
+  width: var(--blackboard-side-width);
+  height: fit-content;
+  max-height: calc(100% - var(--stage-status-clearance, var(--homework-top, 80px)) - var(--homework-bottom, 76px));
+}
+.clock-view:not(.compact-boards) :is(.homework-left, .blackboard-left) { left: var(--board-edge); }
+.clock-view:not(.compact-boards) :is(.homework-right, .blackboard-right) { right: var(--board-edge); }
+.clock-boards :is(.homework-header, .homework-tools, .blackboard-header, .blackboard-footer) { flex-wrap: wrap; }
+.clock-boards .blackboard-date { white-space: normal; }
+
+.clock-view .hero-clock, html[data-font="wengfaluosi"] .clock-view .hero-clock {
+  --clock-number-width: calc(var(--clock-digits, 6) * var(--clock-digit-ratio, .62) + var(--clock-separators, 2) * var(--clock-separator-ratio, .44));
+  color: var(--clock-text-color, var(--text-primary));
+  font-size: min(
+    calc(var(--clock-font-scale, 11) * var(--clock-unit) * var(--stage-read-scale, 1)),
+    calc(var(--center-width) / (var(--clock-number-width) * var(--clock-stretch))),
+    calc(var(--stage-height) * var(--clock-height-limit))
+  );
+}
+.clock-view .clock-eyebrow { font-size: calc(12px * var(--detail-scale)); }
+.hero-date-block { max-width: 100%; }
+.hero-date {
+  color: var(--clock-detail-color, var(--text-secondary));
+  font-size: calc(var(--date-font-size, 15px) * var(--detail-scale));
+}
+.hero-lunar, .hero-almanac {
+  color: var(--clock-detail-color, var(--text-muted));
+  font-size: calc(max(9px, var(--date-font-size, 15px) - 2px) * var(--detail-scale));
+}
+.hero-almanac { justify-content: center; flex-wrap: wrap; row-gap: .45em; }
+.almanac-item { min-width: 0; overflow-wrap: anywhere; }
+.almanac-item em { width: 1.55em; height: 1.55em; flex: 0 0 auto; font-size: .85em; }
+.clock-schedule {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: .25em .75em;
+  max-width: 100%;
+  margin-top: .75em;
+  padding: .38em .72em;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: var(--schedule-text-color, var(--text-primary));
+  background: var(--bg-card);
+  font-size: calc(var(--schedule-font-size, 14px) * var(--stage-read-scale, 1));
+  overflow-wrap: anywhere;
+}
+.clock-schedule > span { color: var(--schedule-text-color, var(--text-secondary)); font-size: .88em; }
+.clock-view .hero-quote {
+  width: 100%;
+  max-width: calc(780px * var(--stage-read-scale, 1));
+  padding-inline: 0;
+  font-size: calc(var(--quote-font-size, 14px) * var(--quote-scale, 1) * var(--stage-read-scale, 1));
+}
+.clock-view .hero-quote:empty { display: none; }
+.compact-boards .hero-quote { margin-top: 14px; min-height: 0; }
+
+.app-shell[data-effective-layout="classroom"] .mode-nav { top: var(--nav-safe-top, 80px); }
+.app-shell[data-effective-layout="classroom"] { --homework-bottom: calc(46px + 24px * var(--stage-read-scale)); }
+.app-shell[data-effective-layout="classroom"] .mode-nav a { font-size: calc(13px * var(--stage-read-scale)); }
+.app-shell[data-effective-layout="classroom"] .clock-footer {
+  height: calc(34px * var(--stage-read-scale));
+  bottom: 20px;
+}
+.app-shell[data-effective-layout="classroom"] .footer-action {
+  min-height: calc(34px * var(--stage-read-scale));
+  padding-inline: calc(10px * var(--stage-read-scale));
+  font-size: calc(12px * var(--stage-read-scale));
+}
+.app-shell[data-effective-layout="classroom"] .footer-action svg {
+  width: calc(19px * var(--stage-read-scale));
+  height: auto;
+}
+.app-shell[data-effective-layout="classroom"] .status-dock {
+  width: min(calc(940px * var(--stage-read-scale)), calc(100% - 2 * var(--stage-gutter)));
+  min-height: calc(38px * var(--stage-read-scale));
+  font-size: calc(12px * var(--stage-read-scale));
+}
+.status-progress { height: calc(24px * var(--stage-read-scale, 1)); }
+.status-weather strong { font-size: calc(var(--status-weather-font-size, 15px) * var(--stage-read-scale, 1)); }
+.status-progress > span, .status-exam > span { color: var(--status-text-color, var(--text-secondary)); }
+.status-weather span, .status-progress > strong {
+  color: var(--status-text-color, var(--text-muted));
+  font-size: calc(10px * var(--stage-read-scale, 1));
+}
+.status-exam > strong { font-size: calc(17px * var(--stage-read-scale, 1)); }
+.status-weather .fluent-icon { width: calc(18px * var(--stage-read-scale, 1)); height: auto; }
+
+.clock-boards .homework-panel {
+  --panel-homework-font: calc(var(--homework-font-size, 13px) * var(--stage-read-scale, 1));
+  --panel-homework-time: calc(var(--homework-time-font-size, 10px) * var(--stage-read-scale, 1));
+}
+.clock-boards .homework-item { font-size: var(--panel-homework-font); }
+.clock-boards .homework-content { color: var(--homework-text-color, var(--text-secondary)); }
+.clock-boards .homework-time-badge { font-size: var(--panel-homework-time); }
+.clock-boards .homework-pager { font-size: calc(var(--panel-homework-font) * .8); }
+.clock-boards :is(.homework-header, .blackboard-header) h2 {
+  font-size: calc(16px * var(--stage-read-scale, 1));
+}
+.clock-boards :is(.homework-kicker, .blackboard-kicker) { font-size: calc(9px * var(--stage-read-scale, 1)); }
+.clock-boards :is(.homework-empty, .homework-add-button) { font-size: calc(12px * var(--stage-read-scale, 1)); }
+.clock-boards .homework-add-button { min-height: calc(32px * var(--stage-read-scale, 1)); }
+.clock-boards .homework-action { font-size: calc(10px * var(--stage-read-scale, 1)); }
+.clock-boards .blackboard-panel {
+  --panel-blackboard-font: calc(var(--blackboard-font-scale, 1) * var(--stage-read-scale, 1));
+}
+.clock-boards :is(.blackboard-line, .blackboard-notepad-input, .blackboard-notepad-text, .blackboard-empty) {
+  font-size: calc(12px * var(--panel-blackboard-font));
+}
+.clock-boards .blackboard-roster-head strong { font-size: calc(13px * var(--panel-blackboard-font)); }
+.clock-boards :is(.blackboard-roster-head small, .blackboard-notepad-head, .blackboard-empty small) {
+  font-size: calc(10px * var(--panel-blackboard-font));
+}
+.clock-boards .blackboard-date { font-size: calc(11px * var(--panel-blackboard-font)); }
+.clock-boards .blackboard-names,
+.clock-boards .blackboard-notepad-input { color: var(--blackboard-text-color, var(--text-primary)); }
+.clock-boards .blackboard-chore,
+.clock-boards .blackboard-notepad-text { color: var(--blackboard-text-color, var(--text-secondary)); }
+.clock-boards .blackboard-notepad-text.empty { color: var(--blackboard-text-color, var(--text-muted)); }
+.clock-boards .blackboard-line.modified .blackboard-names { color: var(--blackboard-text-color, var(--accent)); }
+.clock-boards .blackboard-chore { white-space: normal; }
+.clock-view:not(.compact-boards) .blackboard-timers { max-height: min(250px, calc(var(--stage-height) * .24)); overflow-y: auto; }
+.clock-boards .blackboard-timer {
+  font-size: calc(var(--widget-label-font-size, 11px) * var(--panel-blackboard-font) * var(--task-card-scale, 1));
+}
+.clock-boards .blackboard-timer strong {
+  font-size: calc(var(--widget-font-size, 17px) * var(--panel-blackboard-font) * var(--task-card-scale, 1));
+}
+.task-docks.is-side:not(.is-compact) { right: var(--stage-gutter); }
+.task-docks.is-side.task-docks-left:not(.is-compact) { right: auto; left: var(--stage-gutter); }
+.task-docks.is-side:not(.is-compact) .task-widget { width: var(--task-side-width); }
+.task-docks.is-side.is-compact .task-widget { flex-basis: var(--task-row-width); width: var(--task-row-width); }
+.task-docks:not(.is-compact) { --task-widget-width: var(--task-side-width); }
+.task-docks.is-compact { --task-widget-width: var(--task-row-width); }
+.task-widget > span:nth-child(2) {
+  font-size: calc(var(--widget-label-font-size, 11px) * var(--stage-read-scale, 1) * var(--task-card-scale, 1));
+}
+.task-widget > strong {
+  font-size: min(
+    calc(var(--widget-font-size, 17px) * var(--stage-read-scale, 1) * var(--task-card-scale, 1)),
+    calc((var(--task-widget-width) - 44px) / 5)
+  );
+}
+
+.short-stage:not(.mini-mode) .mode-nav { top: var(--nav-safe-top, 62px); }
+.short-stage:not(.mini-mode, .exam-mode) .clock-view:not(.compact-boards) { padding-bottom: 54px; }
+.short-stage .clock-view:not(.compact-boards) .hero-quote { min-height: 0; margin-top: 12px; }
+.short-stage .clock-view:not(.compact-boards) .hero-date-block { margin-top: 10px; }
+.exam-mode .clock-view:not(.compact-boards) { padding: 0 24px; }
+.exam-mode .clock-eyebrow { display: none; }

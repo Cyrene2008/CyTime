@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useQuotesStore } from '../stores/quotes'
 import { useContentStore } from '../stores/content'
@@ -9,6 +9,7 @@ import { useDigitBox } from '../composables/useDigitBox'
 import { useAlmanac } from '../composables/useAlmanac'
 import { useSmoothShift } from '../composables/useSmoothShift'
 import { useDisplayTime } from '../composables/useDisplayTime'
+import { isLessonOnDate, lessonTimeToSeconds } from '../services/schedule'
 import HomeworkPanel from '../components/HomeworkPanel.vue'
 import BlackboardPanel from '../components/BlackboardPanel.vue'
 
@@ -16,6 +17,7 @@ const { active: stageActive, now } = useDisplayTime()
 const settingsStore = useSettingsStore()
 const quotesStore = useQuotesStore()
 const contentStore = useContentStore()
+const { homeworkEnabled, blackboardEnabled, homeworkShown, blackboardShown, compactBoards, switchableBoards, selectedBoard } = inject('cytimeClassroomBoards')
 const displaySecond = computed(() => Math.floor(now.value / 1000))
 const date = computed(() => new Date(displaySecond.value * 1000))
 const clock = computed(() => formatClock(date.value, settingsStore.settings.showClockSeconds))
@@ -44,21 +46,26 @@ const almanacTitle = computed(() => {
   if (!almanac.value) return ''
   return `${almanac.value.ganZhi} · 宜：${almanac.value.yi.join('、') || '无'} · 忌：${almanac.value.ji.join('、') || '无'}`
 })
-const weekday = computed(() => date.value.getDay())
-const minute = computed(() => `${String(date.value.getHours()).padStart(2, '0')}:${String(date.value.getMinutes()).padStart(2, '0')}`)
-const lessonsToday = computed(() => contentStore.content.schedule.filter(item => item.weekday === weekday.value).sort((a, b) => a.startAt.localeCompare(b.startAt)))
+const scheduleDate = computed(() => formatDate(date.value))
+const secondOfDay = computed(() => lessonTimeToSeconds(formatClock(date.value)))
+const lessonsToday = computed(() => {
+  const today = new Date(`${scheduleDate.value}T12:00:00`)
+  return contentStore.content.schedule
+    .filter(item => isLessonOnDate(item, today, contentStore.content.scheduleWeekOne))
+    .sort((a, b) => lessonTimeToSeconds(a.startAt) - lessonTimeToSeconds(b.startAt))
+})
 const currentLesson = computed(() => {
-  return lessonsToday.value.find(item => item.startAt <= minute.value && minute.value < item.endAt)
+  return lessonsToday.value.find(item => lessonTimeToSeconds(item.startAt) <= secondOfDay.value && secondOfDay.value < lessonTimeToSeconds(item.endAt))
 })
 const nextLesson = computed(() => {
-  return lessonsToday.value.find(item => item.startAt > minute.value)
+  return lessonsToday.value.find(item => lessonTimeToSeconds(item.startAt) > secondOfDay.value)
 })
 const { value: typedQuote, isTyping } = useTypewriter(() => quotesStore.current, {
   active: () => stageActive.value && settingsStore.settings.showQuote && !settingsStore.examModeActive,
   animation: () => settingsStore.settings.quoteAnimation,
   typeSpeed: () => settingsStore.settings.quoteTypeSpeed
 })
-useSmoothShift(() => viewRef.value, () => stageActive.value && !isTyping.value)
+useSmoothShift(() => viewRef.value, () => stageActive.value && !isTyping.value && !compactBoards.value)
 const quote = computed(() => settingsStore.settings.quoteAnimation === 'typewriter' ? typedQuote.value : quotesStore.current)
 const quoteAttribution = computed(() => {
   const meta = quotesStore.metadata
@@ -67,12 +74,10 @@ const quoteAttribution = computed(() => {
 </script>
 
 <template>
-  <section ref="viewRef" class="clock-view" @click="handleStageClick">
+  <section ref="viewRef" class="clock-view" :class="{ 'compact-boards': compactBoards }" @click="handleStageClick">
     <div class="clock-aura aura-one"></div><div class="clock-aura aura-two"></div>
-    <HomeworkPanel v-if="settingsStore.settings.showHomework && !settingsStore.examModeActive" />
-    <BlackboardPanel v-if="settingsStore.settings.showBlackboard && !settingsStore.examModeActive" />
     <div class="clock-eyebrow">昔光涟涟，时不我待</div>
-    <time ref="clockRef" class="hero-clock"><template v-for="(part, index) in clockParts" :key="index"><span v-for="(digit, digitIndex) in part.split('')" :key="digitIndex" class="hero-digit">{{ digit }}</span><b v-if="index < clockParts.length - 1">:</b></template></time>
+    <time ref="clockRef" class="hero-clock" :style="{ '--clock-digits': clockParts.length * 2, '--clock-separators': clockParts.length - 1 }"><template v-for="(part, index) in clockParts" :key="index"><span v-for="(digit, digitIndex) in part.split('')" :key="digitIndex" class="hero-digit">{{ digit }}</span><b v-if="index < clockParts.length - 1">:</b></template></time>
     <div v-if="!settingsStore.examModeActive && (settingsStore.settings.showDate || ((settingsStore.settings.showLunar || settingsStore.settings.showAlmanac) && almanac))" class="hero-date-block">
       <div v-if="settingsStore.settings.showAlmanac && almanac" class="hero-almanac" :title="almanacTitle">
         <span class="almanac-item almanac-yi"><em>宜</em>{{ yiText || '无' }}</span>
@@ -82,5 +87,13 @@ const quoteAttribution = computed(() => {
     </div>
     <div v-if="!settingsStore.examModeActive && settingsStore.settings.showSchedule && (currentLesson || nextLesson)" class="clock-schedule"><strong>{{ currentLesson ? `正在上课 · ${currentLesson.subject}` : `下一节 · ${nextLesson.subject}` }}</strong><span>{{ currentLesson ? `${currentLesson.startAt} - ${currentLesson.endAt}` : `${nextLesson.startAt} 开始` }}<template v-if="(currentLesson || nextLesson).room"> · {{ (currentLesson || nextLesson).room }}</template></span></div>
     <p v-if="!settingsStore.examModeActive && settingsStore.settings.showQuote" ref="quoteRef" class="hero-quote" :class="[`quote-${settingsStore.settings.quoteAnimation}`, { 'is-typing': isTyping }]"><template v-if="quote"><span class="quote-text">{{ quote }}</span><small v-if="quoteAttribution">{{ quoteAttribution }}</small></template></p>
+    <div v-if="homeworkEnabled || blackboardEnabled" class="clock-boards">
+      <div v-if="switchableBoards" class="board-switch" role="group" aria-label="班务板切换">
+        <button type="button" aria-controls="clock-homework-board" :aria-pressed="homeworkShown" @click="selectedBoard = 'homework'"><FluentIcon icon="book-open-20-regular" :width="16" />作业板</button>
+        <button type="button" aria-controls="clock-blackboard" :aria-pressed="blackboardShown" @click="selectedBoard = 'blackboard'"><FluentIcon icon="document-text-20-regular" :width="16" />小黑板</button>
+      </div>
+      <HomeworkPanel v-if="homeworkEnabled" v-show="homeworkShown" id="clock-homework-board" :displayed="homeworkShown" :compact="compactBoards" />
+      <BlackboardPanel v-if="blackboardEnabled" v-show="blackboardShown" id="clock-blackboard" />
+    </div>
   </section>
 </template>

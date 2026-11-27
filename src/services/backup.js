@@ -1,3 +1,7 @@
+import { migrateQuoteSettings } from './quoteEndpoints.js'
+
+import { lessonTimeToSeconds, scheduleWeekTypes } from './schedule.js'
+
 const record = value => Boolean(value && typeof value === 'object' && !Array.isArray(value))
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
 const clone = value => JSON.parse(JSON.stringify(value))
@@ -5,7 +9,7 @@ const clone = value => JSON.parse(JSON.stringify(value))
 export const backupGroups = [
   { id: 'settings', label: '外观与设置', section: 'settings' },
   { id: 'importantDays', label: '重要日', fields: ['importantDays'] },
-  { id: 'schedule', label: '课程表', fields: ['schedule'] },
+  { id: 'schedule', label: '课程表', fields: ['schedule', 'scheduleWeekOne'] },
   { id: 'homework', label: '作业与历史', fields: ['homework', 'homeworkHistory', 'homeworkSubjectPresets', 'homeworkTemplates'] },
   { id: 'duty', label: '值日名单', fields: ['duty'] },
   { id: 'quotes', label: '本地语录', fields: ['quotes', 'quoteMetadata', 'flameJourneyQuotes', 'universityMottos'] },
@@ -22,7 +26,7 @@ function validDate(value) {
   const date = new Date(year, month - 1, day)
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
 }
-function validTime(value) { return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) }
+function validTime(value) { return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value) }
 function validStamp(value) {
   if (value === '') return true
   if (typeof value !== 'string') return false
@@ -39,6 +43,7 @@ export function parseBackup(input) {
     if (own(value, section)) requireValue(record(value[section]), '数据')
   }
   const settings = value.settings || {}
+  if (own(settings, 'displayLayout')) requireValue(['auto', 'desktop', 'classroom'].includes(settings.displayLayout), '显示场景')
   for (const key of ['theme', 'fontFamily', 'background', 'startupMode', 'startupWindowMode']) {
     if (own(settings, key)) requireValue(typeof settings[key] === 'string' && settings[key].length > 0, '设置')
   }
@@ -54,12 +59,15 @@ export function parseBackup(input) {
     if (own(content, key)) requireValue(Array.isArray(content[key]), '内容')
   }
   if (own(content, 'notepad')) requireValue(typeof content.notepad === 'string', '记事板')
+  if (own(content, 'scheduleWeekOne')) requireValue(content.scheduleWeekOne === '' || validDate(content.scheduleWeekOne), '课表第 1 周')
   for (const key of ['quoteMetadata', 'homeworkTemplates']) {
     if (own(content, key)) requireValue(record(content[key]), '内容')
   }
   for (const day of content.importantDays || []) requireValue(record(day) && typeof day.name === 'string' && validDate(day.date), '重要日')
   for (const lesson of content.schedule || []) {
-    requireValue(record(lesson) && typeof lesson.subject === 'string' && Number.isInteger(lesson.weekday) && lesson.weekday >= 0 && lesson.weekday <= 6 && validTime(lesson.startAt) && validTime(lesson.endAt) && lesson.startAt < lesson.endAt, '课程表')
+    requireValue(record(lesson) && typeof lesson.subject === 'string' && Number.isInteger(lesson.weekday) && lesson.weekday >= 0 && lesson.weekday <= 6 && validTime(lesson.startAt) && validTime(lesson.endAt) && lessonTimeToSeconds(lesson.startAt) < lessonTimeToSeconds(lesson.endAt), '课程表')
+    if (own(lesson, 'weeks')) requireValue(own(scheduleWeekTypes, lesson.weeks), '课程周次')
+    for (const key of ['teacher', 'simplifiedName']) if (own(lesson, key)) requireValue(typeof lesson[key] === 'string', '课程信息')
   }
   for (const item of [...(content.homework || []), ...(content.homeworkHistory || [])]) {
     requireValue(record(item) && typeof item.content === 'string' && (!own(item, 'startAt') || validStamp(item.startAt)) && (!own(item, 'dueAt') || validStamp(item.dueAt)), '作业')
@@ -132,13 +140,20 @@ export function prepareBackupRestore(current, backup, selected) {
   let content = null
   for (const group of groups) {
     if (group.id === 'settings') {
-      updates['cytime.settings.v2'] = { ...clone(current.settings || {}), ...clone(backup.settings) }
+      const restored = clone(backup.settings)
+      const previous = clone(current.settings || {})
+      const hasQuoteEndpoint = settings => ['quoteApiRevision', 'quoteApiEndpoint', 'quoteSources', 'quoteCloudSource'].some(key => own(settings, key))
+      updates['cytime.settings.v2'] = {
+        ...(hasQuoteEndpoint(previous) ? migrateQuoteSettings(previous) : previous),
+        ...(hasQuoteEndpoint(restored) ? migrateQuoteSettings(restored) : restored)
+      }
       removeKeys.push('cytime.settings.v1')
     } else if (group.id === 'time') {
       updates['cytime.time-state.v1'] = { ...clone(current.time || {}), ...clone(backup.time) }
     } else {
       content ||= clone(current.content || {})
       for (const field of group.fields) if (own(backup.content, field)) content[field] = clone(backup.content[field])
+      if (group.id === 'schedule' && own(backup.content, 'schedule') && !own(backup.content, 'scheduleWeekOne')) content.scheduleWeekOne = ''
     }
   }
   if (content) updates['cytime.content.v1'] = content

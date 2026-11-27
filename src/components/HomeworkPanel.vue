@@ -6,14 +6,16 @@ import { chooseAndSaveFile } from '../services/desktop'
 import { useDialogActivity } from '../composables/useDialogActivity'
 
 const props = defineProps({
-  manageFloat: { type: Boolean, default: false }
+  manageFloat: { type: Boolean, default: false },
+  displayed: { type: Boolean, default: true },
+  compact: { type: Boolean, default: false }
 })
 const emit = defineEmits(['close'])
 
 const contentStore = useContentStore()
 const settingsStore = useSettingsStore()
 const stageActive = inject('cytimeStageActive', ref(true))
-const visuallyActive = computed(() => props.manageFloat || stageActive.value)
+const visuallyActive = computed(() => props.manageFloat || (stageActive.value && props.displayed))
 
 const CUSTOM_SUBJECT = '__custom__'
 const DEFAULT_SUBJECT_PRESETS = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '政治', '地理', '其他']
@@ -279,7 +281,7 @@ function measurePageSize() {
   const panel = panelRef.value
   const list = listRef.value
   if (!panel || !list || !panel.offsetHeight || pageAnimating) return
-  mobileMode.value = window.innerWidth <= 620
+  mobileMode.value = props.compact || window.innerWidth <= 620
   if (mobileMode.value) return
   const shell = panel.closest('.app-shell')
   const shellH = (shell && shell.clientHeight) || window.innerHeight
@@ -287,7 +289,8 @@ function measurePageSize() {
   let safeBottom = 76
   const dock = document.querySelector('.status-dock')
   if (dock && dock.offsetParent !== null && dock.offsetHeight > 0) {
-    safeTop = Math.max(80, Math.round(dock.offsetTop + dock.offsetHeight + 12))
+    const statusClearance = shell ? parseFloat(getComputedStyle(shell).getPropertyValue('--stage-status-clearance')) : NaN
+    safeTop = Number.isFinite(statusClearance) ? statusClearance : Math.max(80, Math.round(dock.offsetTop + dock.offsetHeight + 12))
   }
   const settingsButton = document.querySelector('.footer-settings')
   if (settingsButton && settingsButton.offsetParent !== null) {
@@ -482,7 +485,7 @@ function cyclePosition() {
 }
 
 function adjustFont(amount) {
-  const next = Math.max(10, Math.min(24, Number(settingsStore.settings.homeworkFontSize) + amount))
+  const next = Math.max(10, Math.min(28, Number(settingsStore.settings.homeworkFontSize) + amount))
   settingsStore.update({ homeworkFontSize: next })
 }
 
@@ -621,11 +624,11 @@ watch(subjectPresets, list => {
 <template>
   <aside ref="panelRef" class="homework-panel" :class="[`homework-${settingsStore.settings.homeworkPosition}`, { 'homework-float': manageFloat }]" :style="{ '--homework-font-size': `${settingsStore.settings.homeworkFontSize}px` }" aria-label="作业板" @pointerdown="resetFloatIdle">
     <header class="homework-header">
-      <div><span class="homework-kicker">WORK</span><h2>作业板</h2></div>
+      <div><span class="homework-kicker">课堂安排</span><h2>作业板</h2></div>
       <div class="homework-tools">
         <button type="button" class="micro-button icon-only" title="导出作业" aria-label="导出作业" @click="exportHomework"><FluentIcon icon="arrow-download-20-regular" :width="15" /></button>
         <button type="button" class="micro-button icon-only" title="布置历史" aria-label="查看布置历史" @click="historyOpen = true; selectedHistoryIds = []"><FluentIcon icon="history-20-regular" :width="15" /></button>
-        <button v-if="!manageFloat" type="button" class="micro-button icon-only" title="切换位置" aria-label="切换作业板位置" @click="cyclePosition"><FluentIcon icon="arrow-swap-20-regular" :width="15" /></button>
+        <button v-if="!manageFloat && !compact" type="button" class="micro-button icon-only" title="切换位置" aria-label="切换作业板位置" @click="cyclePosition"><FluentIcon icon="arrow-swap-20-regular" :width="15" /></button>
         <button v-if="!manageFloat" type="button" class="micro-button icon-only" title="减小字号" aria-label="减小作业板字号" @click="adjustFont(-1)"><FluentIcon icon="font-decrease-20-regular" :width="15" /></button>
         <button v-if="!manageFloat" type="button" class="micro-button icon-only" title="增大字号" aria-label="增大作业板字号" @click="adjustFont(1)"><FluentIcon icon="font-increase-20-regular" :width="15" /></button>
         <button v-if="manageFloat" type="button" class="micro-button icon-only" title="关闭" aria-label="关闭悬浮作业板" @click="emit('close')"><FluentIcon icon="dismiss-20-regular" :width="15" /></button>

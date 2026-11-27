@@ -1,7 +1,8 @@
 import { reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { persistDesktopValue } from '../services/desktop'
-import { createBatchedPersist } from '../services/persistence'
+import { persistDesktopValue } from '../services/desktop.js'
+import { createBatchedPersist } from '../services/persistence.js'
+import { defaultQuoteApiEndpoint, migrateQuoteSettings, normalizeQuoteEndpoint, quoteApiRevision } from '../services/quoteEndpoints.js'
 
 const STORAGE_KEY = 'cytime.settings.v2'
 
@@ -39,24 +40,15 @@ export const defaultSettings = {
   quoteCloudEnabled: true,
   quoteLocalWeight: 3,
   quoteCloudWeight: 1,
-  quoteCloudSource: 'hitokoto',
   quoteApiCategories: [],
-  quoteApiEndpoint: 'cf',
+  quoteApiEndpoint: defaultQuoteApiEndpoint,
+  quoteApiRevision,
   quoteApiCategoryWeightsEnabled: false,
   quoteApiCategoryWeights: {},
   quoteLocalSources: {
     daily: { enabled: true, weight: 3 },
     flameJourney: { enabled: true, weight: 2 },
     university: { enabled: true, weight: 2 }
-  },
-  quoteSources: {
-    cytime: { enabled: true, weight: 20 },
-    hitokoto: { enabled: false, weight: 3 },
-    jinrishici: { enabled: false, weight: 2 },
-    poetry: { enabled: false, weight: 1 },
-    vvhan: { enabled: false, weight: 1 },
-    xygeng: { enabled: false, weight: 1 },
-    adviceSlip: { enabled: false, weight: 1 }
   },
   quoteAnimation: 'typewriter',
   quoteTypeSpeed: 'standard',
@@ -65,12 +57,18 @@ export const defaultSettings = {
   weatherAutoLocated: false,
   fontFamily: 'wengfaluosi',
   background: 'mica',
+  displayLayout: 'auto',
   clockFontScale: 11,
   dateFontSize: 15,
   quoteFontSize: 14,
+  scheduleFontSize: 14,
+  clockDetailScale: 100,
+  quoteScale: 100,
+  taskCardScale: 100,
   statusDockScale: 100,
   statusDockOffsetY: 0,
   homeworkWidth: 300,
+  blackboardWidth: 290,
   homeworkOffsetX: 0,
   homeworkPageInterval: 10,
   uiScale: 100,
@@ -81,6 +79,12 @@ export const defaultSettings = {
   widgetLabelFontSize: 11,
   statusWeatherFontSize: 15,
   countdownFontSize: 22,
+  clockTextColor: '',
+  clockDetailColor: '',
+  scheduleTextColor: '',
+  statusTextColor: '',
+  homeworkTextColor: '',
+  blackboardTextColor: '',
   quoteTextColor: '',
   quoteAuthorColor: '',
   statusWeatherColor: '',
@@ -97,14 +101,18 @@ const cloneSettings = value => JSON.parse(JSON.stringify(value))
 
 function readStoredSettings() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem('cytime.settings.v1') || '{}')
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('cytime.settings.v1')
+    const parsed = JSON.parse(raw || '{}')
+    const saved = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
     const base = cloneSettings(defaultSettings)
-    const merged = { ...base, ...(saved && typeof saved === 'object' ? saved : {}), quoteLocalSources: { ...base.quoteLocalSources, ...(saved?.quoteLocalSources || {}) }, quoteSources: saved?.quoteSources?.cytime ? { ...base.quoteSources, ...saved.quoteSources } : base.quoteSources }
+    const merged = { ...base, ...migrateQuoteSettings(saved), quoteLocalSources: { ...base.quoteLocalSources, ...(saved.quoteLocalSources || {}) } }
     if (merged.startupMode === 'clock') merged.startupMode = 'time'
     if (!['time', 'countdown', 'timer'].includes(merged.startupMode)) merged.startupMode = 'time'
-    return merged
+    if (!['auto', 'desktop', 'classroom'].includes(merged.displayLayout)) merged.displayLayout = 'auto'
+    const migrated = Boolean(raw && (saved.quoteApiRevision !== quoteApiRevision || saved.quoteApiEndpoint !== merged.quoteApiEndpoint || 'quoteSources' in saved || 'quoteCloudSource' in saved))
+    return { settings: merged, migrated }
   } catch {
-    return cloneSettings(defaultSettings)
+    return { settings: cloneSettings(defaultSettings), migrated: false }
   }
 }
 
@@ -137,9 +145,16 @@ export function applyTheme(settings) {
   root.style.setProperty('--clock-font-scale', settings.clockFontScale)
   root.style.setProperty('--date-font-size', `${settings.dateFontSize}px`)
   root.style.setProperty('--quote-font-size', `${settings.quoteFontSize}px`)
+  for (const [name, value] of Object.entries({
+    '--clock-detail-scale': settings.clockDetailScale,
+    '--quote-scale': settings.quoteScale,
+    '--task-card-scale': settings.taskCardScale
+  })) root.style.setProperty(name, String(Math.max(70, Math.min(170, Number(value) || 100)) / 100))
+  root.style.setProperty('--schedule-font-size', `${Math.max(10, Math.min(30, Number(settings.scheduleFontSize) || 14))}px`)
   root.style.setProperty('--status-dock-scale', String(Math.max(60, Math.min(150, Number(settings.statusDockScale) || 100)) / 100))
   root.style.setProperty('--status-dock-offset-y', `${Math.max(-16, Math.min(240, Number(settings.statusDockOffsetY) || 0))}px`)
   root.style.setProperty('--homework-width', `${Math.max(200, Math.min(520, Number(settings.homeworkWidth) || 300))}px`)
+  root.style.setProperty('--blackboard-width', `${Math.max(200, Math.min(520, Number(settings.blackboardWidth) || 290))}px`)
   root.style.setProperty('--homework-offset-x', `${Math.max(0, Math.min(240, Number(settings.homeworkOffsetX) || 0))}px`)
   root.style.setProperty('--blackboard-font-scale', String(Math.max(70, Math.min(160, Number(settings.blackboardFontScale) || 100)) / 100))
   root.style.setProperty('--ui-scale', String(Math.max(50, Math.min(200, settings.uiScale)) / 100))
@@ -147,6 +162,17 @@ export function applyTheme(settings) {
   root.style.setProperty('--widget-label-font-size', `${Math.max(8, Math.min(20, Number(settings.widgetLabelFontSize) || 11))}px`)
   root.style.setProperty('--status-weather-font-size', `${Math.max(10, Math.min(28, Number(settings.statusWeatherFontSize) || 15))}px`)
   root.style.setProperty('--countdown-font-size', `${Math.max(12, Math.min(40, Number(settings.countdownFontSize) || 22))}px`)
+  for (const [name, value] of Object.entries({
+    '--clock-text-color': settings.clockTextColor,
+    '--clock-detail-color': settings.clockDetailColor,
+    '--schedule-text-color': settings.scheduleTextColor,
+    '--status-text-color': settings.statusTextColor,
+    '--homework-text-color': settings.homeworkTextColor,
+    '--blackboard-text-color': settings.blackboardTextColor
+  })) {
+    if (typeof value === 'string' && globalThis.CSS?.supports('color', value)) root.style.setProperty(name, value)
+    else root.style.removeProperty(name)
+  }
   if (settings.quoteTextColor) root.style.setProperty('--quote-text-color', settings.quoteTextColor)
   else root.style.removeProperty('--quote-text-color')
   if (settings.quoteAuthorColor) root.style.setProperty('--quote-author-color', settings.quoteAuthorColor)
@@ -167,7 +193,8 @@ export function applyTheme(settings) {
 }
 
 export const useSettingsStore = defineStore('settings', () => {
-  const settings = reactive(readStoredSettings())
+  const stored = readStoredSettings()
+  const settings = reactive(stored.settings)
   const examModeActive = ref(false)
 
   const persist = createBatchedPersist(() => {
@@ -176,7 +203,7 @@ export const useSettingsStore = defineStore('settings', () => {
   })
 
   function update(patch) {
-    Object.assign(settings, patch)
+    Object.assign(settings, migrateQuoteSettings({ ...patch, quoteApiEndpoint: normalizeQuoteEndpoint(patch.quoteApiEndpoint ?? settings.quoteApiEndpoint), quoteApiRevision }))
     applyTheme(settings)
     persist()
   }
@@ -197,6 +224,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   watch(settings, persist, { deep: true })
   applyTheme(settings)
+  if (stored.migrated) persist()
 
   return { settings, examModeActive, setExamMode, update, reset, exportSettings }
 })

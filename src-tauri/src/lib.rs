@@ -362,15 +362,10 @@ async fn desktop_fetch_json(url: String) -> Result<Value, String> {
     let parsed = reqwest::Url::parse(&url).map_err(|error| error.to_string())?;
     let allowed_hosts = [
         "weatherapi.market.xiaomi.com",
-        "v1.hitokoto.cn",
-        "v1.jinrishici.com",
-        "poetry.palemoky.com",
-        "api.vvhan.com",
-        "api.xygeng.cn",
-        "api.adviceslip.com",
         "worldtimeapi.org",
         "timeapi.io",
         "time.cyrene.hk",
+        "api.cyrene.hk",
         "quote.cyrene.hk",
         "ipwho.is",
         "ipapi.co",

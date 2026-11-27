@@ -1,15 +1,17 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { searchXiaomiCities, locateWeatherCity } from '../services/weather'
-import { fetchQuoteCategories, fetchQuoteStats, quoteApiEndpoints, readQuoteFile } from '../services/quotes'
+import { fetchQuoteCategories, fetchQuoteStats, readQuoteFile } from '../services/quotes'
 import { getPlatform } from '../services/platform'
 import { checkDesktopUpdate, downloadDesktopUpdate, isDesktop as detectDesktop, setDesktopAutostart, setDesktopUriRegistration } from '../services/desktop'
 import { fetchNetworkTime, timeSourceOptions } from '../services/timeSync'
-import { useSettingsStore, defaultSettings } from '../stores/settings'
+import { useSettingsStore } from '../stores/settings'
 import { useContentStore } from '../stores/content'
 import { useWeatherStore } from '../stores/weather'
 import { useTimeStore } from '../stores/time'
 import { FILING_NAME, FILING_URL, QUOTE_API_DOCS } from '../config/branding'
+import { isLessonOnDate, lessonTimeToSeconds, scheduleWeekdays, scheduleWeekParity, scheduleWeekTypes } from '../services/schedule'
+import DisplayCustomizationPanel from '../components/DisplayCustomizationPanel.vue'
 const QuoteSourcePanel = defineAsyncComponent(() => import('../components/QuoteSourcePanel.vue'))
 const LocalQuoteSourcePanel = defineAsyncComponent(() => import('../components/LocalQuoteSourcePanel.vue'))
 const DutySettingsPanel = defineAsyncComponent(() => import('../components/DutySettingsPanel.vue'))
@@ -31,14 +33,13 @@ let navAnimation = null
 const draft = reactive({
   ...settingsStore.settings,
   quoteLocalSources: JSON.parse(JSON.stringify(settingsStore.settings.quoteLocalSources || {})),
-  quoteSources: JSON.parse(JSON.stringify(settingsStore.settings.quoteSources || {})),
   quoteApiCategoryWeights: JSON.parse(JSON.stringify(settingsStore.settings.quoteApiCategoryWeights || {}))
 })
 const activePane = ref('startup')
 const activeGroup = ref(null)
 const groups = [
   { id: 'workspace', label: '基础功能', description: '启动、显示与课程', icon: 'options-20-regular', items: [{ id: 'startup', label: '启动页面', icon: 'clock-20-regular' }, { id: 'display', label: '显示内容', icon: 'eye-20-regular' }, { id: 'countdown', label: '重要日', icon: 'timer-20-regular' }, { id: 'schedule', label: '课程表', icon: 'calendar-20-regular' }, { id: 'duty', label: '值日管理', icon: 'people-20-regular' }] },
-  { id: 'appearance', label: '视觉外观', description: '颜色、字体与背景', icon: 'color-20-regular', items: [{ id: 'overall', label: '整体样式', icon: 'color-20-regular' }, { id: 'time', label: '时间显示', icon: 'clock-20-regular' }, { id: 'layout', label: '组件布局', icon: 'panel-left-20-regular' }, { id: 'customize', label: '组件定制', icon: 'paint-brush-20-regular' }] },
+  { id: 'appearance', label: '视觉外观', description: '大屏模式、布局与字号', icon: 'color-20-regular', items: [{ id: 'overall', label: '显示与主题', icon: 'color-20-regular' }, { id: 'layout', label: '组件布局', icon: 'panel-left-20-regular' }, { id: 'customize', label: '字号与颜色', icon: 'paint-brush-20-regular' }] },
   { id: 'environment', label: '环境提醒', description: '天气与城市', icon: 'alert-20-regular', items: [{ id: 'weather', label: '天气', icon: 'weather-partly-cloudy-day-20-regular' }, { id: 'location', label: '城市', icon: 'location-20-regular' }] },
   { id: 'content', label: '内容语录', description: '语录来源与样式', icon: 'book-open-20-regular', items: [{ id: 'refresh', label: '自动轮换', icon: 'arrow-clockwise-20-regular' }, { id: 'effects', label: '语录样式', icon: 'text-20-regular' }, { id: 'channels', label: '语录来源', icon: 'book-open-20-regular' }] },
   { id: 'system', label: '系统数据', description: '校时、备份与更新', icon: 'database-20-regular', items: [{ id: 'calibration', label: '时间校准', icon: 'time-and-weather-20-regular' }, { id: 'updates', label: '应用更新', icon: 'arrow-sync-20-regular' }, { id: 'data', label: '备份与数据', icon: 'database-20-regular' }] }
@@ -59,21 +60,40 @@ const weekdayOptions = [{ value: 1, label: '周一' }, { value: 2, label: '周�
 const subjectOptions = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '政治', '地理', '其他'].map(value => ({ value, label: value }))
 const scheduleTabs = [{ value: 'overview', label: '概览' }, { value: 'library', label: '课程库' }, { value: 'daily', label: '日课程表' }]
 const scheduleTab = ref('overview')
-const scheduleDay = ref(1)
-const scheduleDayLessons = computed(() => contentStore.content.schedule.filter(item => item.weekday === Number(scheduleDay.value)).sort((a, b) => a.startAt.localeCompare(b.startAt)))
+const displayLayouts = [
+  { id: 'auto', label: '自适应', text: '窗口够大时，自动切换成教室排版。' },
+  { id: 'classroom', label: '教室大屏', text: '加大状态、课程、语录和班务文字，方便远处阅读。' },
+  { id: 'desktop', label: '桌面常规', text: '在大显示器上也使用更紧凑的字号。' }
+]
+const todayWeekday = computed(() => new Date(timeStore.now).getDay())
+const scheduleDay = ref(todayWeekday.value)
+const orderedByStart = (a, b) => lessonTimeToSeconds(a.startAt) - lessonTimeToSeconds(b.startAt)
+const scheduleDayLessons = computed(() => contentStore.content.schedule.filter(item => item.weekday === scheduleDay.value).sort(orderedByStart))
 const scheduleCourses = computed(() => [...new Map(contentStore.content.schedule.map(item => [item.subject, item])).values()])
-const todayLessons = computed(() => contentStore.content.schedule.filter(item => item.weekday === new Date().getDay()).sort((a, b) => a.startAt.localeCompare(b.startAt)))
+const today = computed(() => {
+  const date = new Date(timeStore.now)
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+})
+const todayLessons = computed(() => contentStore.content.schedule.filter(item => isLessonOnDate(item, new Date(today.value), contentStore.content.scheduleWeekOne)).sort(orderedByStart))
+const currentWeekType = computed(() => scheduleWeekParity(new Date(today.value), contentStore.content.scheduleWeekOne))
+const usesWeekCycle = computed(() => contentStore.content.schedule.some(item => item.weeks === 'odd' || item.weeks === 'even'))
 
 const importantName = ref('')
 const importantDate = ref('')
 const quoteDraft = ref('')
 const quoteImportInput = ref(null)
 const lessonSubject = ref('')
-const lessonWeekday = ref(1)
+const lessonWeekday = ref(scheduleDay.value)
 const lessonStart = ref('08:00')
 const lessonEnd = ref('08:45')
 const lessonRoom = ref('')
+const lessonTeacher = ref('')
+const lessonShortName = ref('')
+const lessonWeeks = ref('all')
 const editingLessonId = ref(null)
+const lessonNameField = ref(null)
+const lessonError = ref('')
+const lessonNotice = ref('')
 const cityResults = ref([])
 const citySearchOpen = ref(false)
 const citySearchLoading = ref(false)
@@ -94,7 +114,6 @@ const quotePage = ref(1)
 const quotePageSize = ref(10)
 const selectedQuotes = ref([])
 const quotePageSizeOptions = [{ value: 10, label: '10 条/页' }, { value: 20, label: '20 条/页' }, { value: 50, label: '50 条/页' }, { value: 100, label: '100 条/页' }]
-const quoteEndpointOptions = quoteApiEndpoints.map(item => ({ value: item.id, label: item.label }))
 const quotePageCount = computed(() => Math.max(1, Math.ceil(contentStore.content.quotes.length / quotePageSize.value)))
 const pagedQuotes = computed(() => contentStore.content.quotes.slice((quotePage.value - 1) * quotePageSize.value, quotePage.value * quotePageSize.value))
 const allPageSelected = computed(() => pagedQuotes.value.length > 0 && pagedQuotes.value.every(quote => selectedQuotes.value.includes(quote)))
@@ -173,9 +192,60 @@ function toggleAllPage() {
 function removeSelectedQuotes() { contentStore.removeQuotes(selectedQuotes.value); selectedQuotes.value = [] }
 watch([quotePageSize, () => contentStore.content.quotes.length], () => { quotePage.value = Math.min(quotePage.value, quotePageCount.value); selectedQuotes.value = selectedQuotes.value.filter(quote => contentStore.content.quotes.includes(quote)) })
 watch(() => draft.quoteApiEndpoint, () => { if (quoteConfigOpen.value) refreshQuoteCategories() })
-function addLesson() { const lesson = { subject: lessonSubject.value.trim() || '未命名课程', weekday: Number(lessonWeekday.value), startAt: lessonStart.value, endAt: lessonEnd.value, room: lessonRoom.value.trim() }; const existing = contentStore.content.schedule.find(item => item.id === editingLessonId.value); if (existing) contentStore.updateLesson(existing, lesson); else contentStore.addLesson(lesson); editingLessonId.value = null; lessonSubject.value = ''; lessonRoom.value = '' }
-function editLesson(lesson) { editingLessonId.value = lesson.id; lessonSubject.value = lesson.subject; lessonWeekday.value = lesson.weekday; lessonStart.value = lesson.startAt; lessonEnd.value = lesson.endAt; lessonRoom.value = lesson.room || '' }
-function cancelLessonEdit() { editingLessonId.value = null; lessonSubject.value = ''; lessonRoom.value = '' }
+function selectScheduleDay(day) {
+  scheduleDay.value = day
+  lessonNotice.value = ''
+}
+function addLesson() {
+  lessonNotice.value = ''
+  const existing = contentStore.content.schedule.find(item => item.id === editingLessonId.value)
+  if (editingLessonId.value && !existing) {
+    lessonError.value = '这节课已被移除，请取消编辑后再试。'
+    return
+  }
+  const weekday = existing ? lessonWeekday.value : scheduleDay.value
+  const lesson = {
+    subject: lessonSubject.value, weekday, startAt: lessonStart.value, endAt: lessonEnd.value,
+    room: lessonRoom.value, weeks: lessonWeeks.value, teacher: lessonTeacher.value, simplifiedName: lessonShortName.value
+  }
+  try {
+    if (existing) contentStore.updateLesson(existing, lesson)
+    else contentStore.addLesson(lesson)
+  } catch (error) {
+    lessonError.value = error.message
+    return
+  }
+  scheduleDay.value = weekday
+  cancelLessonEdit()
+  lessonNotice.value = `已${existing ? '更新' : '添加'}到${scheduleWeekdays[weekday]}课表。`
+}
+function editLesson(lesson) {
+  editingLessonId.value = lesson.id
+  lessonSubject.value = lesson.subject
+  lessonWeekday.value = lesson.weekday
+  lessonStart.value = lesson.startAt
+  lessonEnd.value = lesson.endAt
+  lessonRoom.value = lesson.room || ''
+  lessonTeacher.value = lesson.teacher || ''
+  lessonShortName.value = lesson.simplifiedName || ''
+  lessonWeeks.value = lesson.weeks || 'all'
+  lessonNotice.value = lessonError.value = ''
+  nextTick(() => lessonNameField.value?.focus())
+}
+function cancelLessonEdit() {
+  const wasEditing = editingLessonId.value !== null
+  editingLessonId.value = null
+  lessonSubject.value = lessonRoom.value = lessonTeacher.value = lessonShortName.value = lessonError.value = lessonNotice.value = ''
+  lessonWeeks.value = 'all'
+  if (wasEditing) {
+    lessonStart.value = '08:00'
+    lessonEnd.value = '08:45'
+  }
+}
+function deleteLesson(lesson) {
+  if (lesson.id === editingLessonId.value) cancelLessonEdit()
+  contentStore.removeLesson(lesson)
+}
 async function importQuotes(event) { const file = event.target.files?.[0]; if (!file) return; try { contentStore.addQuotes(await readQuoteFile(file)); feedbackMessage.value = '语录已导入' } catch { feedbackMessage.value = '金句文件格式无效' }; event.target.value = '' }
 async function refreshQuoteCategories() {
   const request = ++quoteConfigGeneration
@@ -187,8 +257,10 @@ async function refreshQuoteCategories() {
   try {
     const [list, stats] = await Promise.all([fetchQuoteCategories(controller.signal, preferred).catch(() => []), fetchQuoteStats(controller.signal, preferred).catch(() => null)])
     if (disposed || request !== quoteConfigGeneration || controller.signal.aborted) return
-    quoteCategories.value = list.length ? list : ['崩铁', '幽默解压', '名人名言', '学习', '人民日报']
-    if (stats) { quoteCounts.value = stats.categories; quoteTotal.value = stats.total }
+    const categories = list.length ? list : ['崩铁', '幽默解压', '名人名言', '人民日报']
+    quoteCategories.value = [...new Set([...categories, ...(draft.quoteApiCategories || [])])]
+    quoteCounts.value = stats?.categories || {}
+    quoteTotal.value = stats?.total || 0
   } finally { if (!disposed && request === quoteConfigGeneration) quoteCategoryLoading.value = false }
 }
 function toggleQuoteCategory(category) { const selected = new Set(draft.quoteApiCategories || []); if (selected.has(category)) selected.delete(category); else selected.add(category); draft.quoteApiCategories = [...selected] }
@@ -388,13 +460,13 @@ onBeforeUnmount(() => {
       <aside ref="dockRef" class="settings-dock">
         <div ref="navIndicator" class="settings-nav-indicator" aria-hidden="true" style="opacity: 0" />
         <template v-if="!activeGroup">
-          <nav class="settings-nav settings-root-nav" aria-label="设置分类"><button v-for="group in groups" :key="group.id" type="button" class="settings-group-button" :class="{ active: activePane !== 'about' && group.items.some(item => item.id === activePane) }" @click="enterGroup(group)"><FluentIcon :icon="group.icon" :width="18" /><span><strong>{{ group.label }}</strong><small>{{ group.description }}</small></span><FluentIcon icon="chevron-right-16-regular" :width="14" class="group-chevron" /></button></nav>
-          <button type="button" class="settings-nav-project" :class="{ active: activePane === 'about' }" @click="activePane = 'about'; queueNavSync(true)"><FluentIcon icon="info-20-regular" :width="17" /><span>项目信息</span></button>
+          <nav class="settings-nav settings-root-nav" aria-label="设置分类"><button v-for="group in groups" :key="group.id" type="button" class="settings-group-button" :aria-label="group.label" :title="group.label" :class="{ active: activePane !== 'about' && group.items.some(item => item.id === activePane) }" @click="enterGroup(group)"><FluentIcon :icon="group.icon" :width="18" /><span><strong>{{ group.label }}</strong><small>{{ group.description }}</small></span><FluentIcon icon="chevron-right-16-regular" :width="14" class="group-chevron" /></button></nav>
+          <button type="button" class="settings-nav-project" aria-label="项目信息" title="项目信息" :class="{ active: activePane === 'about' }" @click="activePane = 'about'; queueNavSync(true)"><FluentIcon icon="info-20-regular" :width="17" /><span>项目信息</span></button>
         </template>
         <template v-else>
-          <button type="button" class="settings-dock-back" @click="activeGroup = null; queueNavSync(true)"><FluentIcon icon="arrow-left-20-regular" :width="18" /><span>返回</span></button>
+          <button type="button" class="settings-dock-back" aria-label="返回设置分类" title="返回设置分类" @click="activeGroup = null; queueNavSync(true)"><FluentIcon icon="arrow-left-20-regular" :width="18" /><span>返回</span></button>
           <div class="settings-subnav-heading"><FluentIcon :icon="activeGroup.icon" :width="18" /><div><strong>{{ activeGroup.label }}</strong><small>{{ activeGroup.description }}</small></div></div>
-          <nav class="settings-nav settings-subnav" :aria-label="`${activeGroup.label}设置`"><button v-for="item in activeGroup.items" :key="item.id" type="button" class="settings-nav-item" :class="{ active: activePane === item.id }" @click="selectPane(item.id)"><FluentIcon :icon="item.icon" :width="16" /><span>{{ item.label }}</span></button></nav>
+          <nav class="settings-nav settings-subnav" :aria-label="`${activeGroup.label}设置`"><button v-for="item in activeGroup.items" :key="item.id" type="button" class="settings-nav-item" :aria-label="item.label" :title="item.label" :aria-current="activePane === item.id ? 'true' : undefined" :class="{ active: activePane === item.id }" @click="selectPane(item.id)"><FluentIcon :icon="item.icon" :width="16" /><span>{{ item.label }}</span></button></nav>
         </template>
         <div class="settings-dock-footer">CyTime 昔时时钟 · v{{ appVersion }}<template v-if="buildId"> · build {{ buildId }}</template></div>
       </aside>
@@ -425,9 +497,15 @@ onBeforeUnmount(() => {
         <template v-else-if="activePane === 'countdown'"><span class="settings-kicker">基础功能</span><h2>重要日</h2><p class="settings-lead">记下考试、生日和其它重要日期。</p><section class="setting-card"><div class="card-toolbar"><div><h3>添加日期</h3></div><div class="inline-form"><input v-model="importantName" placeholder="名称" /><FluentDatePicker v-model="importantDate" placeholder="日期" /><button type="button" class="subtle-button" @click="addImportant">添加</button></div></div><div class="managed-list"><div v-for="item in contentStore.content.importantDays" :key="item.id" class="managed-item"><span><strong>{{ item.name }}</strong><small>{{ item.date }} · 还有 {{ daysUntil(item.date) }} 天</small></span><button type="button" class="icon-text-button" @click="contentStore.removeImportantDay(item)">删除</button></div></div></section></template>
 
         <template v-else-if="activePane === 'schedule'">
-          <span class="settings-kicker">基础功能</span><h2>课程表</h2><p class="settings-lead">管理每周课程安排。</p>
+          <span class="settings-kicker">基础功能</span><h2>课程表</h2><p class="settings-lead">查看本周安排，按天排课，或与其他应用交换 CSES 课表。</p>
+          <section v-if="usesWeekCycle || contentStore.content.scheduleWeekOne" class="setting-card schedule-week">
+            <div><h3>单双周</h3><p>选择学期第 1 周中的任意一天，昔时会从该周的周一开始计算。</p></div>
+            <label class="range-control">第 1 周日期<input type="date" class="setting-input" :value="contentStore.content.scheduleWeekOne" @change="contentStore.setScheduleWeekOne($event.target.value)" /></label>
+            <p v-if="!contentStore.content.scheduleWeekOne" class="schedule-feedback" role="status">配置日期后，时钟才会显示单周或双周的课程。</p>
+            <p v-else class="schedule-feedback" role="status">{{ currentWeekType ? `本周为${scheduleWeekTypes[currentWeekType]}。` : '第 1 周尚未开始。' }}</p>
+          </section>
           <ScheduleImportPanel @imported="$event && cancelLessonEdit()" />
-          <div class="settings-tabs"><button v-for="tab in scheduleTabs" :key="tab.value" type="button" :class="{ active: scheduleTab === tab.value }" @click="scheduleTab = tab.value">{{ tab.label }}</button></div>
+          <div class="settings-tabs" role="group" aria-label="课表视图"><button v-for="tab in scheduleTabs" :key="tab.value" type="button" :aria-pressed="scheduleTab === tab.value" :class="{ active: scheduleTab === tab.value }" @click="scheduleTab = tab.value">{{ tab.label }}</button></div>
           <template v-if="scheduleTab === 'overview'">
             <section class="schedule-summary-grid"><div class="setting-card"><small>今日课程</small><strong>{{ todayLessons.length }}</strong><span>{{ todayLessons.length ? '今日课时' : '今天没有课程' }}</span></div><div class="setting-card"><small>每周课时</small><strong>{{ contentStore.content.schedule.length }}</strong></div><div class="setting-card"><small>课程种类</small><strong>{{ scheduleCourses.length }}</strong></div></section>
             <section class="setting-card"><h3>今日课程</h3><div v-if="todayLessons.length" class="managed-list"><div v-for="lesson in todayLessons" :key="lesson.id" class="managed-item"><span><strong>{{ lesson.subject }}</strong><small>{{ lesson.startAt }} - {{ lesson.endAt }} {{ lesson.room }}</small></span></div></div><p v-else class="empty-inline">今天没有课程。</p></section>
@@ -436,33 +514,73 @@ onBeforeUnmount(() => {
             <section class="setting-card"><div class="card-toolbar"><h3>课程库</h3><span class="task-total">{{ scheduleCourses.length }} 门课程</span></div><div class="managed-list"><div v-for="course in scheduleCourses" :key="course.subject" class="managed-item"><span><strong>{{ course.subject }}</strong><small>{{ course.room || '未设置教室' }}</small></span></div><p v-if="!scheduleCourses.length" class="empty-inline">还没有课程。</p></div></section>
           </template>
           <template v-else-if="scheduleTab === 'daily'">
-            <section class="setting-card">
-              <div class="schedule-toolbar"><FluentSelect v-model="scheduleDay" :options="weekdayOptions" aria-label="查看星期" /><span>{{ scheduleDayLessons.length }} 节课</span></div>
-              <div class="inline-form schedule-form"><input v-model="lessonSubject" placeholder="课程名称" /><FluentSelect v-model="lessonWeekday" :options="weekdayOptions" aria-label="上课星期" /><FluentTimePicker v-model="lessonStart" placeholder="上课时间" /><FluentTimePicker v-model="lessonEnd" placeholder="下课时间" /><input v-model="lessonRoom" placeholder="教室（选填）" /><button type="button" class="subtle-button" @click="addLesson">{{ editingLessonId ? '保存课程' : '添加课程' }}</button><button v-if="editingLessonId" type="button" class="subtle-button" @click="cancelLessonEdit">取消</button></div>
-              <div class="managed-list"><div v-for="lesson in scheduleDayLessons" :key="lesson.id" class="managed-item"><span><strong>{{ lesson.subject }}</strong><small>{{ lesson.startAt }} - {{ lesson.endAt }} {{ lesson.room }}</small></span><span class="managed-actions"><button type="button" class="icon-text-button" @click="editLesson(lesson)">编辑</button><button type="button" class="icon-text-button" @click="contentStore.removeLesson(lesson)">删除</button></span></div><p v-if="!scheduleDayLessons.length" class="empty-inline">这一天还没有课程。</p></div>
+            <section class="setting-card schedule-day-card">
+              <div class="schedule-day-switch" role="group" aria-label="查看星期">
+                <button v-for="day in weekdayOptions" :key="day.value" type="button" class="subtle-button" :aria-pressed="scheduleDay === day.value" @click="selectScheduleDay(day.value)">{{ day.label }}</button>
+              </div>
+              <div class="card-toolbar"><h3>{{ scheduleWeekdays[scheduleDay] }}课程</h3><span class="task-total">{{ scheduleDayLessons.length }} 节</span></div>
+              <div v-if="scheduleDayLessons.length" class="managed-list">
+                <div v-for="lesson in scheduleDayLessons" :key="lesson.id" class="managed-item">
+                  <span><strong>{{ lesson.subject }}</strong><small>{{ lesson.startAt }}–{{ lesson.endAt }} · {{ scheduleWeekTypes[lesson.weeks || 'all'] }}<template v-if="lesson.room"> · {{ lesson.room }}</template><template v-if="lesson.teacher"> · {{ lesson.teacher }}</template></small></span>
+                  <span class="managed-actions"><button type="button" class="icon-text-button" :aria-label="`编辑${lesson.subject}`" @click="editLesson(lesson)">编辑</button><button type="button" class="icon-text-button" :aria-label="`删除${lesson.subject}`" @click="deleteLesson(lesson)">删除</button></span>
+                </div>
+              </div>
+              <p v-else class="empty-inline">这一天还没有课程，可以从下方添加。</p>
+              <form class="lesson-editor" novalidate @submit.prevent="addLesson">
+                <h3>{{ editingLessonId ? '编辑课程' : `添加到${scheduleWeekdays[scheduleDay]}` }}</h3>
+                <div class="lesson-fields">
+                  <label>课程名称<input ref="lessonNameField" v-model="lessonSubject" class="setting-input" placeholder="例如：数学" required /></label>
+                  <label>教室（选填）<input v-model="lessonRoom" class="setting-input" placeholder="例如：实验楼 302" /></label>
+                  <label>上课时间<input v-model="lessonStart" class="setting-input" type="time" step="1" required /></label>
+                  <label>下课时间<input v-model="lessonEnd" class="setting-input" type="time" step="1" required /></label>
+                  <label>上课周次<select v-model="lessonWeeks" class="setting-input"><option v-for="(label, value) in scheduleWeekTypes" :key="value" :value="value">{{ label }}</option></select></label>
+                  <label v-if="editingLessonId">上课星期<select v-model.number="lessonWeekday" class="setting-input"><option v-for="day in weekdayOptions" :key="day.value" :value="day.value">{{ day.label }}</option></select></label>
+                </div>
+                <details class="lesson-extras">
+                  <summary>教师和课程简称（选填）</summary>
+                  <div class="lesson-fields">
+                    <label>教师<input v-model="lessonTeacher" class="setting-input" /></label>
+                    <label>课程简称<input v-model="lessonShortName" class="setting-input" /></label>
+                  </div>
+                </details>
+                <p v-if="lessonError" class="schedule-feedback" role="alert">{{ lessonError }}</p>
+                <p v-else-if="lessonNotice" class="schedule-feedback" role="status">{{ lessonNotice }}</p>
+                <div class="data-actions">
+                  <button type="submit" class="save-button">{{ editingLessonId ? '保存课程' : '添加课程' }}</button>
+                  <button v-if="editingLessonId" type="button" class="subtle-button" @click="cancelLessonEdit">取消编辑</button>
+                </div>
+              </form>
             </section>
           </template>
         </template>
 
         <template v-else-if="activePane === 'duty'"><span class="settings-kicker">基础功能</span><h2>值日管理</h2><p class="settings-lead">管理成员、任务和轮换排班。</p><DutySettingsPanel :draft="draft" /></template>
         <template v-else-if="activePane === 'overall'">
-          <span class="settings-kicker">视觉外观</span><h2>整体样式</h2><p class="settings-lead">选择主题、字体和背景。</p>
+          <span class="settings-kicker">视觉外观</span><h2>显示与主题</h2><p class="settings-lead">从电脑桌面到教室投屏，先选阅读场景，再细调字号与颜色。</p>
+          <section class="setting-card">
+            <h3>阅读场景</h3>
+            <fieldset class="display-layout-options" aria-label="阅读场景">
+              <label v-for="layout in displayLayouts" :key="layout.id" :class="{ selected: draft.displayLayout === layout.id }">
+                <input v-model="draft.displayLayout" type="radio" name="display-layout" :value="layout.id" />
+                <span><strong>{{ layout.label }}</strong><small>{{ layout.text }}</small></span>
+              </label>
+            </fieldset>
+            <button type="button" class="subtle-button" @click="selectPane('customize')">调整各区域字号与颜色</button>
+          </section>
           <section class="setting-card"><h3>主题</h3><div class="theme-options"><button type="button" class="theme-option dark-option" :class="{ selected: draft.theme === 'dark-peach' }" @click="draft.theme = 'dark-peach'"><i></i><span>深色桃粉</span></button><button type="button" class="theme-option light-option" :class="{ selected: draft.theme === 'light-peach' }" @click="draft.theme = 'light-peach'"><i></i><span>浅色桃粉</span></button></div><div class="appearance-fields"><label>数字字体<FluentSelect v-model="draft.fontFamily" :options="fontOptions" /></label><label>背景<FluentSelect v-model="draft.background" :options="backgroundOptions" /></label><label class="range-control">整体缩放 <strong>{{ draft.uiScale }}%</strong><input v-model.number="draft.uiScale" type="range" min="50" max="200" step="5" /></label></div><div class="accent-row"><label class="color-field"><span>主题色</span><FluentColorPicker v-model="draft.accentColor" :showPresets="false" /></label><button type="button" class="subtle-button" @click="draft.accentColor = ''">恢复默认主题色</button></div></section>
           <section class="setting-card setting-row"><div><h3>沉浸模式</h3><p>隐藏小组件边框，让页面更简洁。</p></div><button type="button" class="switch" :class="{ on: draft.immersiveMode }" :aria-pressed="draft.immersiveMode" @click="draft.immersiveMode = !draft.immersiveMode"><i></i></button></section>
         </template>
-
-        <template v-else-if="activePane === 'time'"><span class="settings-kicker">视觉外观</span><h2>时间显示</h2><p class="settings-lead">调整时钟、日期和语录的大小。</p><section class="setting-card"><label class="range-control">主时钟大小 <strong>{{ draft.clockFontScale }}</strong><input v-model.number="draft.clockFontScale" type="range" min="6" max="22" step="0.5" /></label><label class="range-control">日期字号 <strong>{{ draft.dateFontSize }}px</strong><input v-model.number="draft.dateFontSize" type="range" min="10" max="32" /></label><label class="range-control">语录字号 <strong>{{ draft.quoteFontSize }}px</strong><input v-model.number="draft.quoteFontSize" type="range" min="10" max="48" /></label></section></template>
 
         <template v-else-if="activePane === 'layout'">
           <span class="settings-kicker">视觉外观</span><h2>组件布局</h2><p class="settings-lead">调整状态栏与面板的大小和位置。</p>
           <section class="setting-card"><h3>状态栏</h3><label class="range-control">整体缩放 <strong>{{ draft.statusDockScale }}%</strong><input v-model.number="draft.statusDockScale" type="range" min="60" max="150" step="5" /></label><label class="range-control">垂直位置 <strong>{{ draft.statusDockOffsetY }}px</strong><input v-model.number="draft.statusDockOffsetY" type="range" min="0" max="240" step="2" /></label></section>
           <section class="setting-card"><h3>作业板</h3><label class="range-control">面板宽度 <strong>{{ draft.homeworkWidth }}px</strong><input v-model.number="draft.homeworkWidth" type="range" min="200" max="520" step="10" /></label><label class="range-control">贴边偏移 <strong>{{ draft.homeworkOffsetX }}px</strong><input v-model.number="draft.homeworkOffsetX" type="range" min="0" max="240" step="4" /></label><label class="range-control">翻页间隔 <strong>{{ draft.homeworkPageInterval }} 秒</strong><input v-model.number="draft.homeworkPageInterval" type="range" min="3" max="60" step="1" /></label></section>
-          <section class="setting-card"><h3>小黑板</h3><label class="range-control">字体缩放 <strong>{{ draft.blackboardFontScale }}%</strong><input v-model.number="draft.blackboardFontScale" type="range" min="70" max="160" step="5" /></label></section>
+          <section class="setting-card"><h3>小黑板</h3><label class="range-control">面板宽度 <strong>{{ draft.blackboardWidth }}px</strong><input v-model.number="draft.blackboardWidth" type="range" min="200" max="520" step="10" /></label></section>
         </template>
 
-        <template v-else-if="activePane === 'customize'"><span class="settings-kicker">视觉外观</span><h2>组件定制</h2><p class="settings-lead">分别调整各组件的字体和颜色。</p>
-        <section class="setting-card"><h3>字体大小</h3><div class="appearance-fields"><label class="range-control">小组件数字 <strong>{{ draft.widgetFontSize }}px</strong><input v-model.number="draft.widgetFontSize" type="range" min="10" max="32" step="1" /></label><label class="range-control">小组件标签 <strong>{{ draft.widgetLabelFontSize }}px</strong><input v-model.number="draft.widgetLabelFontSize" type="range" min="8" max="20" step="1" /></label><label class="range-control">状态栏天气 <strong>{{ draft.statusWeatherFontSize }}px</strong><input v-model.number="draft.statusWeatherFontSize" type="range" min="10" max="28" step="1" /></label><label class="range-control">倒计时显示 <strong>{{ draft.countdownFontSize }}px</strong><input v-model.number="draft.countdownFontSize" type="range" min="12" max="40" step="1" /></label><label class="range-control">作业时间 <strong>{{ draft.homeworkTimeFontSize }}px</strong><input v-model.number="draft.homeworkTimeFontSize" type="range" min="8" max="24" step="1" /></label></div><button type="button" class="subtle-button" @click="draft.widgetFontSize = defaultSettings.widgetFontSize; draft.widgetLabelFontSize = defaultSettings.widgetLabelFontSize; draft.statusWeatherFontSize = defaultSettings.statusWeatherFontSize; draft.countdownFontSize = defaultSettings.countdownFontSize; draft.homeworkTimeFontSize = defaultSettings.homeworkTimeFontSize">恢复默认字号</button></section>
-        <section class="setting-card"><h3>字体颜色</h3><p>重置后恢复默认配色。</p><div class="color-fields"><label class="color-field"><span>语录文字</span><FluentColorPicker v-model="draft.quoteTextColor" :showPresets="false" /></label><label class="color-field"><span>作者与出处</span><FluentColorPicker v-model="draft.quoteAuthorColor" :showPresets="false" /></label><label class="color-field"><span>状态栏天气</span><FluentColorPicker v-model="draft.statusWeatherColor" :showPresets="false" /></label><label class="color-field"><span>计时小组件</span><FluentColorPicker v-model="draft.taskWidgetColor" :showPresets="false" /></label><label class="color-field"><span>小组件强调色</span><FluentColorPicker v-model="draft.taskWidgetAccentColor" :showPresets="false" /></label><label class="color-field"><span>作业进行中</span><FluentColorPicker v-model="draft.homeworkStatusOngoingColor" :showPresets="false" /></label><label class="color-field"><span>作业待开始</span><FluentColorPicker v-model="draft.homeworkStatusUpcomingColor" :showPresets="false" /></label><label class="color-field"><span>作业已结束</span><FluentColorPicker v-model="draft.homeworkStatusEndedColor" :showPresets="false" /></label><label class="color-field"><span>作业时间</span><FluentColorPicker v-model="draft.homeworkTimeColor" :showPresets="false" /></label></div><button type="button" class="subtle-button" @click="draft.quoteTextColor = defaultSettings.quoteTextColor; draft.quoteAuthorColor = defaultSettings.quoteAuthorColor; draft.statusWeatherColor = defaultSettings.statusWeatherColor; draft.taskWidgetColor = defaultSettings.taskWidgetColor; draft.taskWidgetAccentColor = defaultSettings.taskWidgetAccentColor; draft.homeworkStatusOngoingColor = defaultSettings.homeworkStatusOngoingColor; draft.homeworkStatusUpcomingColor = defaultSettings.homeworkStatusUpcomingColor; draft.homeworkStatusEndedColor = defaultSettings.homeworkStatusEndedColor; draft.homeworkTimeColor = defaultSettings.homeworkTimeColor">恢复默认颜色</button></section>
+        <template v-else-if="activePane === 'customize'">
+          <span class="settings-kicker">视觉外观</span><h2>字号与颜色</h2><p class="settings-lead">先选区域，预览会随调整更新。保存后应用到主屏，教室大屏会在此基础上再放大。</p>
+          <DisplayCustomizationPanel :draft="draft" @change="Object.assign(draft, $event)" />
         </template>
 
         <template v-else-if="activePane === 'weather' || activePane === 'location'">
@@ -497,12 +615,11 @@ onBeforeUnmount(() => {
                </div></Transition></div><footer class="settings-actions"><span v-if="feedbackMessage" class="save-message">{{ feedbackMessage }}</span><button type="button" class="subtle-button action-button" @click="cancel"><FluentIcon icon="dismiss-20-regular" :width="15" /> 取消</button><button type="button" class="save-button action-button" @click="save"><FluentIcon icon="checkmark-20-regular" :width="15" /> 保存</button></footer><FluentToast ref="toastRef" /></div>
     </div>
     <div v-if="uriHelpOpen" class="uri-help-layer" role="dialog" aria-modal="true" aria-label="链接调用说明" @click.self="uriHelpOpen = false"><section class="uri-help-modal"><header><div><span class="settings-kicker">桌面端</span><h2>链接调用说明</h2></div><button type="button" class="dialog-close" aria-label="关闭说明" @click="uriHelpOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></header><div class="uri-help-content"><p>用链接打开昔时，或控制计时任务。</p><dl><dt>打开应用</dt><dd><code>cytime://</code></dd><dt>窗口模式</dt><dd><code>cytime://?mode=mini</code>、<code>normal</code>、<code>max</code> 或 <code>full</code></dd><dt>切换页面</dt><dd><code>cytime://page/time</code><br /><code>cytime://page/countdown</code><br /><code>cytime://page/timer</code></dd><dt>创建倒计时</dt><dd><code>cytime://countdown?target=20261101121500</code><br /><code>cytime://countdown?length=1800</code></dd><dt>控制倒计时</dt><dd><code>cytime://task/countdown/pause</code><br /><code>cytime://task/countdown/continue</code><br /><code>cytime://task/countdown/stop</code></dd></dl></div><footer><button type="button" class="save-button" @click="uriHelpOpen = false">知道了</button></footer></section></div>
-    <div v-if="quoteConfigOpen" class="uri-help-layer" role="dialog" aria-modal="true" aria-label="CyQuote 昔言 · 分类" @click.self="quoteConfigOpen = false">
+    <div v-if="quoteConfigOpen" class="uri-help-layer" role="dialog" aria-modal="true" aria-label="在线语录分类" @click.self="quoteConfigOpen = false">
       <section class="uri-help-modal quote-config-modal">
-        <header><div><span class="settings-kicker">在线来源</span><h2>CyQuote 昔言 · 分类</h2></div><button type="button" class="dialog-close" aria-label="关闭分类配置" @click="quoteConfigOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></header>
+        <header><div><span class="settings-kicker">在线语录</span><h2>语录分类</h2></div><button type="button" class="dialog-close" aria-label="关闭分类设置" @click="quoteConfigOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></header>
         <div class="uri-help-content">
-          <p>选择喜欢的分类，或保留全部。</p><p class="setting-copy"><a class="project-link" :href="QUOTE_API_DOCS" target="_blank" rel="noreferrer">昔言说明</a></p>
-          <div class="setting-row quote-weight-toggle"><div><h3>优先来源</h3><p>连接失败时会尝试其它来源。</p></div><FluentSelect v-model="draft.quoteApiEndpoint" :options="quoteEndpointOptions" aria-label="优先来源" /></div>
+          <p>选择想看的分类。设为「全部」时，会从整个语录库抽取。</p><p class="setting-copy"><a class="project-link" :href="QUOTE_API_DOCS" target="_blank" rel="noreferrer">昔枢服务说明</a></p>
           <div class="category-chips quote-config-chips"><button type="button" class="category-chip" :class="{ active: !draft.quoteApiCategories?.length }" @click="draft.quoteApiCategories = []">全部<small v-if="quoteTotal">· {{ quoteTotal }}</small></button><button v-for="category in quoteCategories" :key="category" type="button" class="category-chip" :class="{ active: draft.quoteApiCategories?.includes(category) }" @click="toggleQuoteCategory(category)">{{ category }}<small v-if="quoteCounts[category] !== undefined">· {{ quoteCounts[category] }}</small></button><span v-if="quoteCategoryLoading" class="quote-config-hint">正在获取分类…</span></div>
           <div class="setting-row quote-weight-toggle"><div><h3>调整分类比重</h3><p>比重越大，出现机会越多。</p></div><button type="button" class="switch" :class="{ on: draft.quoteApiCategoryWeightsEnabled }" :disabled="!draft.quoteApiCategories?.length" @click="toggleCategoryWeights"><i></i></button></div>
           <div v-if="draft.quoteApiCategoryWeightsEnabled && draft.quoteApiCategories?.length" class="category-weight-list"><label v-for="category in draft.quoteApiCategories" :key="category" class="category-weight-row"><span>{{ category }}</span><input type="number" min="0" max="9999" :value="categoryWeight(category)" @input="setCategoryWeight(category, $event)" /></label></div>
@@ -523,3 +640,42 @@ onBeforeUnmount(() => {
     </div>
   </section>
 </template>
+
+<style scoped>
+.display-layout-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr)); gap: 8px; margin: 12px 0; padding: 0; border: 0; min-width: 0; }
+.display-layout-options label { display: flex; align-items: flex-start; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--border-strong); border-radius: 7px; cursor: pointer; }
+.display-layout-options label.selected { border-color: var(--accent); background: var(--accent-50); }
+.display-layout-options input { flex: none; margin: 1px 0 0; accent-color: var(--accent); }
+.display-layout-options span { display: grid; gap: 4px; color: var(--text-primary); font-size: 13px; }
+.display-layout-options small { color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
+.schedule-week { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px 14px; }
+.schedule-week .range-control { margin: 0; width: 150px; }
+.schedule-week .schedule-feedback { grid-column: 1 / -1; }
+.schedule-day-switch { display: grid; grid-template-columns: repeat(auto-fit, minmax(42px, 1fr)); gap: 5px; margin-bottom: 14px; }
+.schedule-day-switch button { padding-inline: 3px; }
+.schedule-day-switch button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: var(--accent-50); font-weight: 600; }
+.lesson-editor { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-subtle); }
+.lesson-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(132px, 100%), 1fr)); gap: 10px; margin: 10px 0; }
+.lesson-fields label { display: grid; gap: 5px; color: var(--text-secondary); font-size: 12px; }
+.lesson-fields .setting-input, .schedule-week .setting-input { width: 100%; min-width: 0; }
+.lesson-fields select { appearance: auto; }
+.lesson-extras { margin: 8px 0; color: var(--text-secondary); font-size: 12px; }
+.lesson-extras summary { width: fit-content; padding: 4px 0; cursor: pointer; }
+.schedule-feedback { color: var(--accent); font-size: 12px; line-height: 1.55; }
+.schedule-feedback[role='alert'] { color: var(--text-primary); padding-inline-start: 8px; border-inline-start: 2px solid var(--accent); }
+@media (max-width: 620px) {
+  .settings-dock { flex: 0 0 90px; width: 90px; min-width: 90px; padding: 12px 5px; }
+  .settings-dock .settings-nav-indicator { left: 2px; }
+  .settings-dock :is(.settings-group-button, .settings-nav-item, .settings-nav-project, .settings-dock-back) { min-height: 44px; padding: 6px 3px; justify-content: center; gap: 3px; text-align: center; font-size: 11px; }
+  .settings-dock :is(.settings-group-button, .settings-nav-item) > span { display: block; }
+  .settings-dock :is(.group-chevron, .settings-subnav-heading) { display: none; }
+  .settings-scroll { padding-inline: 11px; }
+  .schedule-week { grid-template-columns: 1fr; }
+  .schedule-day-switch { grid-template-columns: repeat(auto-fit, minmax(35px, 1fr)); }
+  .schedule-day-switch button { min-height: 36px; }
+  .schedule-day-card .managed-list { grid-template-columns: minmax(0, 1fr); }
+  .schedule-day-card .managed-item { min-width: 0; flex-wrap: wrap; gap: 6px; }
+  .schedule-day-card .managed-item > span:first-child { min-width: 0; flex: 1 1 100%; flex-wrap: wrap; gap: 3px; white-space: normal; overflow-wrap: anywhere; }
+  .schedule-day-card .managed-actions { margin-left: auto; }
+}
+</style>

@@ -4,7 +4,7 @@ import { persistDesktopValue } from '../services/desktop'
 import { createBatchedPersist } from '../services/persistence'
 import { localDateStr, countOccurrences, isDateString, normalizeSlots, setStartupRotationPolicy } from '../services/duty'
 import { sortMembersPinyin } from '../utils/dutyRoster'
-import { mergeSchedule } from '../services/schedule'
+import { countNewScheduleLessons, mergeSchedule, normalizeScheduleLesson } from '../services/schedule'
 import quoteData from '../data/quotes.jsonc'
 
 const STORAGE_KEY = 'cytime.content.v1'
@@ -34,6 +34,7 @@ const defaultContent = {
   flameJourneyQuotes: [...flameJourneyQuotes],
   universityMottos: [...universityMottos],
   schedule: [],
+  scheduleWeekOne: '',
   homework: [],
   homeworkHistory: [],
   homeworkSubjectPresets: ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '政治', '地理', '其他'],
@@ -98,6 +99,7 @@ function readContent() {
       flameJourneyQuotes: Array.isArray(saved.flameJourneyQuotes) && saved.flameJourneyQuotes.length ? saved.flameJourneyQuotes : [...defaultContent.flameJourneyQuotes],
       universityMottos,
       schedule: Array.isArray(saved.schedule) ? saved.schedule : [],
+      scheduleWeekOne: isDateString(saved.scheduleWeekOne) ? saved.scheduleWeekOne : '',
       homework: Array.isArray(saved.homework) ? saved.homework : [],
       homeworkHistory: Array.isArray(saved.homeworkHistory) ? saved.homeworkHistory : [],
       homeworkSubjectPresets: normalizeSubjectPresets(saved.homeworkSubjectPresets),
@@ -158,12 +160,18 @@ export const useContentStore = defineStore('content', () => {
     removing.forEach(value => delete content.quoteMetadata[value])
     persist()
   }
-  function addLesson(lesson) {
-    content.schedule.push({ id: id('lesson'), ...lesson })
+  function checkedLesson(draft, original) {
+    const lesson = normalizeScheduleLesson(draft)
+    const others = original ? content.schedule.filter(item => item.id !== original.id) : content.schedule
+    if (!countNewScheduleLessons(others, [lesson])) throw new Error('这节课已在当天课表中')
+    return lesson
+  }
+  function addLesson(draft) {
+    content.schedule.push({ ...checkedLesson(draft), id: id('lesson') })
     persist()
   }
   function updateLesson(lesson, patch) {
-    Object.assign(lesson, patch)
+    Object.assign(lesson, checkedLesson({ ...lesson, ...patch }, lesson))
     persist()
   }
   function removeLesson(lesson) {
@@ -175,6 +183,11 @@ export const useContentStore = defineStore('content', () => {
     content.schedule = mergeSchedule(content.schedule, lessons, replace, () => id('lesson'))
     persist()
     return replace ? content.schedule.length : content.schedule.length - previous
+  }
+  function setScheduleWeekOne(date) {
+    if (date !== '' && !isDateString(date)) return
+    content.scheduleWeekOne = date
+    persist()
   }
   function addHomework(item) {
     if (!item.content?.trim()) return
@@ -425,5 +438,5 @@ export const useContentStore = defineStore('content', () => {
   }
 
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, importSchedule, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, setFreezeUnstartedDays, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, setHomeworkSubjectPresets, saveHomeworkTemplate, clearHomeworkTemplate, updateNotepad }
+  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, importSchedule, setScheduleWeekOne, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, setFreezeUnstartedDays, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, setHomeworkSubjectPresets, saveHomeworkTemplate, clearHomeworkTemplate, updateNotepad }
 })

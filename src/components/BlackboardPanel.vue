@@ -51,8 +51,9 @@ function backToday() {
 
 const side = computed(() => {
   const position = settingsStore.settings.blackboardPosition
-  if (position === 'left' || position === 'right') return position
-  return settingsStore.settings.homeworkPosition === 'right' ? 'left' : 'right'
+  const homeworkSide = settingsStore.settings.homeworkPosition
+  if ((position === 'left' || position === 'right') && (!settingsStore.settings.showHomework || position !== homeworkSide)) return position
+  return homeworkSide === 'right' ? 'left' : 'right'
 })
 
 function countdownRemaining(task) {
@@ -119,21 +120,26 @@ const notepad = computed(() => contentStore.content.notepad || '')
 const notepadEditing = ref(false)
 const notepadDraft = ref('')
 const notepadRef = ref(null)
+const notepadButton = ref(null)
 let notepadTimer = 0
 function openNotepad() {
   notepadDraft.value = notepad.value
   notepadEditing.value = true
   nextTick(() => notepadRef.value?.focus())
 }
-function saveNotepad() {
+function saveNotepad(restoreFocus = false) {
   window.clearTimeout(notepadTimer)
   notepadTimer = 0
   contentStore.updateNotepad(notepadDraft.value)
   notepadEditing.value = false
+  if (restoreFocus) nextTick(() => notepadButton.value?.focus())
 }
 function onNotepadInput() {
   window.clearTimeout(notepadTimer)
-  notepadTimer = window.setTimeout(() => contentStore.updateNotepad(notepadDraft.value), 500)
+  notepadTimer = window.setTimeout(() => {
+    notepadTimer = 0
+    contentStore.updateNotepad(notepadDraft.value)
+  }, 500)
 }
 function clearNotepad() {
   window.clearTimeout(notepadTimer)
@@ -141,13 +147,17 @@ function clearNotepad() {
   notepadDraft.value = ''
   contentStore.updateNotepad('')
 }
-onUnmounted(() => window.clearTimeout(notepadTimer))
+onUnmounted(() => {
+  if (!notepadTimer) return
+  window.clearTimeout(notepadTimer)
+  contentStore.updateNotepad(notepadDraft.value)
+})
 </script>
 
 <template>
   <aside class="blackboard-panel" :class="`blackboard-${side}`" aria-label="小黑板">
     <header class="blackboard-header">
-      <div><span class="blackboard-kicker">BLACKBOARD</span><h2>小黑板</h2></div>
+      <div><span class="blackboard-kicker">值日与记事</span><h2>小黑板</h2></div>
       <div class="blackboard-head-actions">
         <span v-if="previewing" class="blackboard-preview-badge">预览</span>
         <button type="button" class="micro-button icon-only" title="值日管理" aria-label="打开值日管理" @click="openSettings?.('duty')"><FluentIcon icon="settings-20-regular" :width="14" /></button>
@@ -182,21 +192,21 @@ onUnmounted(() => window.clearTimeout(notepadTimer))
       </template>
       <p v-else class="blackboard-empty">
         <template v-if="hasRoster">今日无值日安排</template>
-        <template v-else>尚无值日名单<small>在 设置 · 值日管理 中导入或新建</small></template>
+        <template v-else>还没有值日名单<small>可到「值日管理」添加成员和任务。</small></template>
       </p>
       <section class="blackboard-notepad">
         <div class="blackboard-notepad-head">
           <span>记事板</span>
           <button v-if="notepad && !notepadEditing" type="button" class="micro-button icon-only" title="清空记事板" aria-label="清空记事板" @click="clearNotepad"><FluentIcon icon="delete-20-regular" :width="12" /></button>
         </div>
-        <textarea v-if="notepadEditing" ref="notepadRef" v-model="notepadDraft" class="blackboard-notepad-input" rows="3" placeholder="写点什么…" @input="onNotepadInput" @blur="saveNotepad" @keydown.esc="saveNotepad"></textarea>
-        <p v-else class="blackboard-notepad-text" :class="{ empty: !notepad }" @click="openNotepad">{{ notepad || '点此记点什么…' }}</p>
+        <textarea v-if="notepadEditing" ref="notepadRef" v-model="notepadDraft" class="blackboard-notepad-input" rows="3" aria-label="记事内容" placeholder="写点什么…" @input="onNotepadInput" @blur="saveNotepad()" @keydown.esc.prevent="saveNotepad(true)"></textarea>
+        <button v-else ref="notepadButton" type="button" class="blackboard-notepad-text" :class="{ empty: !notepad }" @click="openNotepad">{{ notepad || '点此记点什么…' }}</button>
       </section>
     </div>
     <footer class="blackboard-footer">
       <button type="button" class="micro-button icon-only" title="上一天" aria-label="上一天" :disabled="!hasPrev" @click="step(-1)"><FluentIcon icon="chevron-left-20-regular" :width="14" /></button>
       <span class="blackboard-date">{{ dateLabel }}</span>
-      <button type="button" class="micro-button" :disabled="atToday" @click="backToday">回到今天</button>
+      <button v-if="!atToday" type="button" class="micro-button" @click="backToday">回到今天</button>
       <button type="button" class="micro-button icon-only" title="下一天" aria-label="下一天" :disabled="!hasNext" @click="step(1)"><FluentIcon icon="chevron-right-20-regular" :width="14" /></button>
     </footer>
     <div v-if="editor" class="blackboard-editor">

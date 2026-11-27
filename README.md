@@ -20,14 +20,14 @@ CyTime 就是为这件事做的一只钟：能放在班级大屏、自习室投�
 
 ### 课堂
 
-- **课程表**：CSV、JSON、Excel 都可以先预览再导入，追加去重或整表替换随你选，也支持下载模板与导出
-- **作业板**：作业一条条列着；新添的模板管理能给每个科目预设起止时长，切换科目时自动填好，编辑旧作业则不会被动改写
+- **课程表**：以 [CSES](https://github.com/SmartTeachCN/CSES)（YAML）为主要交换格式，支持单双周、教师、教室和秒级时段。导入前可对照新增、移除和冲突；旧版 CSV、JSON、Excel 仍可读入。有单双周课程时，在昔时设置学期第 1 周即可。
+- **作业与小黑板**：宽屏并排，手机在时钟下方直接切换。作业可按科目预设起止时间，小黑板可以看值日、写记事。
 - **值日排班**：独立的名单与任务、定次预览、单日临时调整；可以挑从哪天开始，也能导出排班表和每个人的次数统计
 - **未启动不轮换**：想严格一点就打开它，只按实际运行过的日子往前推，手动补记不算数，换规则时轮次也不会乱跳
 
 ### 样子
 
-- 深色 / 浅色主题，柔光、渐变、纯色背景，几种数字字体，各组件的大小与颜色都能单独调
+- **教室大屏**：默认随窗口切换，也可在「视觉外观 → 显示与主题」指定教室或桌面排版；「字号与颜色」可分别预览和调整时钟与日期、课程、语录、状态栏、作业、小黑板和活动计时。
 - 状态栏可缩放、可上下偏移，作业板能改宽度与贴边距离，窗口被拖成奇怪的尺寸也不会挤作一团
 - **沉浸模式**：去掉小组件的边框，让它们贴着背景，安安静静
 - **纯净模式**：考试、自习或投屏时用，天气、作业板和语录先收起来，只留下时间
@@ -66,44 +66,24 @@ bun run tauri:dev    # 桌面开发模式
 bun run tauri:build  # 打包 Windows 安装包（NSIS）
 ```
 
-## CyQuote 昔言 API
+## 在线语录
 
-语录服务已经独立成一个小项目，放在自己的仓库里了：[Cyrene2008/CyQuote](https://github.com/Cyrene2008/CyQuote)。Go 与 Rust 两种等价实现，单个二进制就能跑，也欢迎自己部署一份。
+这次更新会把旧配置切换到昔枢。以后可在「语录来源」改首选服务；首选不可用时会自动试备用源，在线服务均不可用时使用本地语录。
 
-线上地址：`https://quote.cyrene.hk`
+| 顺序 | 服务 | 接口 |
+| --- | --- | --- |
+| 1 | 昔枢 · `api.cyrene.hk` | `/v1/quote` 随机语录 |
+| 2 | 昔言 · `quote.cyrene.hk` | `/api/v1/quote`，另提供 `/categories` 和 `/count` |
+| 3 | 昔时 · `time.cyrene.hk` | 随机语录、分类与数量的最终备用；供 CyTime 客户端使用 |
 
-| 接口 | 说明 |
-| --- | --- |
-| `GET /api/v1/quote?format=json` | 随机返回一条语录 |
-| `GET /api/v1/quote?format=json&category=崩铁` | 按分类随机（逗号分隔可多选） |
-| `GET /api/v1/quote/categories` | 返回全部分类 |
-| `GET /api/v1/quote/count` | 查询分类与总数 |
-
-响应示例（真实返回）：
-
-```json
-{
-  "value": "时代不负奋斗者，星光不负赶路人。",
-  "author": "",
-  "from": "《人民日报》",
-  "category": ["人民日报", "名人名言", "崩铁", "幽默解压"],
-  "source": "CyQuote"
-}
-```
-
-这四个分类目前一共 3562 条：人民日报 537、名人名言 1599、崩铁 1215、幽默解压 211（截至 2026-10-29）。
-
-几点说明：
-
-- 语录内容和接口实现都在 CyQuote 仓库，新增或修改请去那边提交，本仓库不再维护语录数据
-- 本仓库里的 `api/` 是随网页端留下的旧接口与数据副本，`functions/` 由 `scripts/sync-quote-data.mjs` 生成，只负责把 `/api` 指向昔言文档页
-- 网页端还留着「昔时源」`https://time.cyrene.hk/api/v1/quote`，给旧版本和回退用；时间校准仍是 `https://time.cyrene.hk/api/v1/time`
+昔时的 Cloudflare 接口只对已允许的 CyTime 页面来源和客户端标记开放，不允许通配跨域访问。需要从自定义预览域访问时，可通过 `CYTIME_QUOTE_EXTRA_ORIGINS` 显式添加精确来源。列出的浏览器来源和公开标记不能验证调用方身份。时间校准仍使用 `/api/v1/time`。
 
 ## 项目结构
 
 ```
-api/                     # 旧版 Vercel 风格接口与语录数据副本（兼容用）
-functions/               # Cloudflare Pages Functions（由脚本生成，指向昔言文档页）
+api/data/                # 昔时备用语录数据与 JSONC 解析
+functions/               # Cloudflare Pages Functions：备用语录、校时与天气
+server/                  # Cloudflare 语录请求检查
 scripts/
   build-icons.mjs        # 生成实际使用的离线图标子集
   sync-quote-data.mjs    # 同步语录接口与数据
@@ -112,7 +92,7 @@ src/
   composables/           # useDigitBox / useAlmanac / useTypewriter 等
   config/branding.js     # 版本、版权与备案信息
   data/quotes.jsonc      # 内置语录（日常 / 逐火 / 校训）
-  services/              # 语录、天气、校时、备份、排班、计时分段、CSV、桌面桥接
+  services/              # 语录、天气、校时、备份、排班、CSES、计时分段与桌面桥接
   stores/                # Pinia：设置、时间、内容、语录、天气
   styles/app.css         # 主题与布局
   views/                 # 时钟 / 倒计时 / 计时器 / 作业管理 / 设置
@@ -123,7 +103,7 @@ tests/                   # 持久化、备份、排班、网络、计时分段�
 ## 部署
 
 - 网页端走 Cloudflare Pages（Git 集成，生产分支 `Cyrene`），自定义域名 `time.cyrene.hk`
-- 语录服务单独部署在 `quote.cyrene.hk`，源码与部署说明见 CyQuote 仓库
+- 昔枢与昔言独立部署；昔言源码与部署说明见 [Cyrene2008/CyQuote](https://github.com/Cyrene2008/CyQuote)
 - 桌面端用 GitHub Actions 发版：手动触发 `.github/workflows/build-release.yml`，先同步语录、跑网页与 Rust 测试，再构建 NSIS 安装包，最后创建或更新 Release
 - 版本号以 `src-tauri/tauri.conf.json` 为准，发布出来的就是它
 

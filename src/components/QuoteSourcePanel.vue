@@ -1,5 +1,5 @@
 <script setup>
-import { quoteSourceOptions } from '../services/quotes'
+import { quoteApiEndpoints, quoteApiOrder } from '../services/quoteEndpoints'
 
 defineProps({
   draft: { type: Object, required: true }
@@ -7,20 +7,32 @@ defineProps({
 
 const emit = defineEmits(['configure'])
 
-const sources = Object.entries(quoteSourceOptions).map(([id, option]) => ({ id, ...option }))
+const endpointOptions = quoteApiEndpoints.map(({ id, label }) => ({ value: id, label }))
+const names = Object.fromEntries(quoteApiEndpoints.map(({ id, label }) => [id, label]))
 </script>
 
 <template>
   <section class="setting-card quote-source-panel">
-    <div class="setting-card-heading"><FluentIcon icon="cloud-20-regular" :width="20" /><div><h3>在线来源</h3><p>选择来源和出现比重。</p></div></div>
-    <div class="setting-row quote-cloud-toggle"><div><h3>在线语录</h3><p>联网获取更多语录。</p></div><button type="button" class="switch" :class="{ on: draft.quoteCloudEnabled }" :aria-pressed="draft.quoteCloudEnabled" @click="draft.quoteCloudEnabled = !draft.quoteCloudEnabled"><i></i></button></div>
-    <div class="quote-source-list">
-      <div v-for="source in sources" :key="source.id" class="quote-source-row">
-        <button type="button" class="switch" :class="{ on: draft.quoteSources[source.id]?.enabled }" :aria-pressed="draft.quoteSources[source.id]?.enabled" :aria-label="`启用${source.label}`" @click="draft.quoteSources[source.id].enabled = !draft.quoteSources[source.id].enabled"><i></i></button>
-        <div class="quote-source-copy"><strong>{{ source.label }}</strong><small>{{ source.description }}</small><span class="source-badge">在线 · {{ source.language }} · 已{{ draft.quoteSources[source.id]?.enabled ? '启用' : '停用' }}</span></div>
-        <button v-if="source.id === 'cytime'" type="button" class="source-config-button" aria-label="配置 CyQuote 昔言分类" @click="emit('configure', source.id)"><FluentIcon icon="settings-16-regular" :width="15" /></button>
-        <label class="quote-source-weight">比重<input v-model.number="draft.quoteSources[source.id].weight" type="number" min="0" max="9999" /></label>
+    <div class="setting-card-heading"><FluentIcon icon="cloud-20-regular" :width="20" /><div><h3>在线语录</h3><p>打开后，在线语录会和本地语录一起轮换。</p></div></div>
+    <div class="setting-row quote-cloud-toggle">
+      <div><h3>使用在线语录</h3><p>无法连接时会改用本地语录。</p></div>
+      <button type="button" class="switch" aria-label="使用在线语录" :class="{ on: draft.quoteCloudEnabled }" :aria-pressed="draft.quoteCloudEnabled" @click="draft.quoteCloudEnabled = !draft.quoteCloudEnabled"><i></i></button>
+    </div>
+    <div class="setting-row online-source-options">
+      <div>
+        <h3>优先服务</h3>
+        <p>尝试顺序：{{ quoteApiOrder(draft.quoteApiEndpoint).map(id => names[id]).join(' → ') }}</p>
       </div>
+      <FluentSelect v-model="draft.quoteApiEndpoint" :options="endpointOptions" aria-label="在线语录优先服务" />
+    </div>
+    <div class="setting-row online-source-options">
+      <div><h3>语录分类</h3><p>选定喜欢的内容，留空则轮换全部分类。</p></div>
+      <button type="button" class="subtle-button" @click="emit('configure')">设置分类</button>
     </div>
   </section>
 </template>
+
+<style scoped>
+.online-source-options { flex-wrap: wrap; }
+.online-source-options .subtle-button { white-space: nowrap; }
+</style>

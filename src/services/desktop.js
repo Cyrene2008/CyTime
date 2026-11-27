@@ -32,19 +32,20 @@ function withAbort(promise, signal) {
   })
 }
 
-export async function fetchJson(url, externalSignal) {
+export async function fetchJson(url, externalSignal, { headers, timeoutMs = 12000 } = {}) {
   const controller = new AbortController()
   const abort = () => controller.abort(externalSignal?.reason)
   if (externalSignal?.aborted) abort()
   else externalSignal?.addEventListener('abort', abort, { once: true })
-  const timeout = setTimeout(() => controller.abort(new DOMException('请求超时', 'TimeoutError')), 12000)
+  const timeout = setTimeout(() => controller.abort(new DOMException('请求超时', 'TimeoutError')), timeoutMs)
   const signal = controller.signal
   const load = async () => {
-    if (isDesktop()) {
+    // A marked request must go through the WebView so the endpoint also sees its Origin.
+    if (!headers && isDesktop()) {
       try { return await withAbort(invoke('desktop_fetch_json', { url }), signal) }
       catch (error) { if (signal.aborted || error?.name === 'AbortError') throw error }
     }
-    const response = await fetch(url, { signal })
+    const response = await fetch(url, { signal, headers })
     if (!response.ok) throw new Error(`Request failed: ${response.status}`)
     return response.json()
   }

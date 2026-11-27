@@ -50,3 +50,15 @@ test('legacy date-only homework deadlines are accepted', () => {
   const backup = parseBackup({ content: { homework: [{ content: '练习', startAt: '', dueAt: '2026-10-28' }] } })
   assert.equal(backup.content.homework[0].dueAt, '2026-10-28')
 })
+
+test('CSES lesson weeks, second precision, and the reference date survive a selective backup restore', () => {
+  const entry = { ...lesson, weeks: 'even', startAt: '08:00:10', endAt: '08:00:30', teacher: '陈老师' }
+  const content = { schedule: [entry], scheduleWeekOne: '2026-09-01' }
+  const backup = parseBackup(createBackup({ content }))
+  const result = prepareBackupRestore({ content: { schedule: [], notepad: '保留' } }, backup, ['schedule'])
+  assert.deepEqual(result.updates['cytime.content.v1'], { ...content, notepad: '保留' })
+  const legacy = parseBackup({ content: { schedule: [lesson] } })
+  assert.equal(prepareBackupRestore({ content }, legacy, ['schedule']).updates['cytime.content.v1'].scheduleWeekOne, '')
+  assert.throws(() => parseBackup({ content: { scheduleWeekOne: '2026-09-31' } }), /第 1 周/)
+  assert.throws(() => parseBackup({ content: { schedule: [{ ...entry, endAt: '08:00' }] } }), /课程表/)
+})
