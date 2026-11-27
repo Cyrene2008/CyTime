@@ -1,5 +1,5 @@
 import { fetchJson } from './desktop.js'
-import { quoteApiEndpoints, quoteApiOrder } from './quoteEndpoints.js'
+import { normalizeQuoteEndpoint, quoteApiEndpoints, quoteApiOrder } from './quoteEndpoints.js'
 
 const cyTimeClientHeader = { 'X-CyTime-Client': 'cytime-v1' }
 const BLOCKED_TERMS = ['色情', '赌博', '毒品', '暴力恐怖']
@@ -51,16 +51,20 @@ export function fetchCloudQuote(signal, categories = [], preferred) {
   })
 }
 
-// 昔枢只提供语录正文，分类列表和统计从支持这些接口的服务读取。
+// 昔枢没有分类/统计接口，使用它自己的静态分类，不再借用昔言/昔时的旧目录。
 export function fetchQuoteCategories(signal, preferred) {
-  return fetchQuoteApi(preferred, signal, endpoint => endpoint.catalog ? '/categories' : null, response => {
+  const endpoint = quoteApiEndpoints.find(item => item.id === normalizeQuoteEndpoint(preferred))
+  if (endpoint?.categories && !endpoint.catalog) return Promise.resolve([...endpoint.categories])
+  return fetchQuoteApi(preferred, signal, item => item.catalog ? '/categories' : null, response => {
     if (!Array.isArray(response?.categories)) throw new Error('语录分类格式无效')
     return response.categories.filter(item => typeof item === 'string' && item.trim())
   })
 }
 
 export function fetchQuoteStats(signal, preferred) {
-  return fetchQuoteApi(preferred, signal, endpoint => endpoint.catalog ? '/count' : null, response => {
+  const endpoint = quoteApiEndpoints.find(item => item.id === normalizeQuoteEndpoint(preferred))
+  if (endpoint && !endpoint.catalog) return Promise.resolve(null)
+  return fetchQuoteApi(preferred, signal, item => item.catalog ? '/count' : null, response => {
     const { total, categories } = response || {}
     if (!Number.isInteger(total) || total < 0 || !categories || typeof categories !== 'object' || Array.isArray(categories)) throw new Error('语录统计格式无效')
     return { total, categories }

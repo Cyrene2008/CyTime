@@ -82,7 +82,16 @@ test('a quote outside the selected categories is rejected', async t => {
   assert.deepEqual(calls.map(url => url.hostname), ['api.cyrene.hk'])
 })
 
-test('formerly unsupported metadata is fetched from the first compatible service', async t => {
+test('xishu uses its own category list and does not borrow metadata', async t => {
+  const fetch = t.mock.method(globalThis, 'fetch', () => assert.fail('xishu metadata must not be fetched'))
+
+  assert.deepEqual(await fetchQuoteCategories(undefined, 'xishu'), ['人民日报', '名人名言', '崩铁', '英语'])
+  assert.deepEqual(await fetchQuoteCategories(), ['人民日报', '名人名言', '崩铁', '英语'])
+  assert.equal(await fetchQuoteStats(undefined, 'xishu'), null)
+  assert.equal(fetch.mock.callCount(), 0)
+})
+
+test('catalog endpoints still provide categories and counts', async t => {
   const calls = []
   t.mock.method(globalThis, 'fetch', async input => {
     const url = new URL(input)
@@ -91,8 +100,8 @@ test('formerly unsupported metadata is fetched from the first compatible service
     return Response.json({ total: 2, categories: { 崩铁: 2 } })
   })
 
-  assert.deepEqual(await fetchQuoteCategories(), ['崩铁'])
-  assert.deepEqual(await fetchQuoteStats(), { total: 2, categories: { 崩铁: 2 } })
+  assert.deepEqual(await fetchQuoteCategories(undefined, 'xiyan'), ['崩铁'])
+  assert.deepEqual(await fetchQuoteStats(undefined, 'xiyan'), { total: 2, categories: { 崩铁: 2 } })
   assert.deepEqual(calls.map(url => url.hostname), ['quote.cyrene.hk', 'quote.cyrene.hk'])
   assert.deepEqual(calls.map(url => url.pathname), ['/api/v1/quote/categories', '/api/v1/quote/count'])
 })
