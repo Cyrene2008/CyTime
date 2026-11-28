@@ -18,6 +18,7 @@ import HomeworkPanel from './components/HomeworkPanel.vue'
 import { fetchNetworkTime } from './services/timeSync'
 import { locateWeatherCity } from './services/weather'
 import { localDateStr } from './services/duty'
+import { groupImportantDays, importantDayPreviews, importantDayStatus } from './services/importantDays'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,6 +42,7 @@ const desktopAutoStart = ref(false)
 const fullscreenActive = ref(false)
 const isHomeworkWindow = ref(false)
 const isSettings = computed(() => settingsOpen.value)
+const isClassroom = computed(() => route.meta.classroom === true)
 provide('cytimeStageActive', computed(() => !isSettings.value && !dialogActivity.value))
 const purePromptOpen = ref(false)
 const purePromptSeconds = ref(10)
@@ -48,11 +50,26 @@ const currentSecond = computed(() => Math.floor(timeStore.now / 1000))
 const currentDate = computed(() => new Date(currentSecond.value * 1000))
 const currentDay = computed(() => localDateStr(currentDate.value))
 const progress = computed(() => dayProgress(currentDate.value))
-const examRemaining = computed(() => Math.max(0, Math.ceil((new Date('2027-06-07T00:00:00').getTime() - timeStore.now) / 86400000)))
-const upcomingDays = computed(() => contentStore.content.importantDays.filter(item => item.date >= currentDay.value).sort((a, b) => a.date.localeCompare(b.date)))
+const importantDays = computed(() => groupImportantDays(contentStore.content.importantDays, currentDay.value))
+const upcomingDays = computed(() => importantDayPreviews(importantDays.value.upcoming))
 const dayRotation = ref(0)
-const featuredDay = computed(() => upcomingDays.value.length ? upcomingDays.value[dayRotation.value % upcomingDays.value.length] : null)
-const featuredDayRemaining = computed(() => featuredDay.value ? Math.max(0, Math.ceil((new Date(`${featuredDay.value.date}T00:00:00`).getTime() - timeStore.now) / 86400000)) : examRemaining.value)
+const featuredDay = computed(() => upcomingDays.value[dayRotation.value % upcomingDays.value.length] || null)
+const importantDaysTrigger = ref(null)
+const importantDaysLabel = computed(() => featuredDay.value
+  ? `${featuredDay.value.name}，${importantDayStatus(featuredDay.value.days)}。查看和管理重要日`
+  : `${importantDays.value.past.length ? '所有重要日均已过去' : '还没有重要日'}。查看和管理重要日`)
+let restoreImportantDaysFocus = false
+watch(upcomingDays, () => { dayRotation.value = 0 })
+watch(isSettings, open => {
+  if (!open && restoreImportantDaysFocus) {
+    restoreImportantDaysFocus = false
+    nextTick(() => importantDaysTrigger.value?.focus())
+  }
+})
+function openImportantDays() {
+  restoreImportantDaysFocus = true
+  openSettings('countdown')
+}
 const weatherTemperature = computed(() => weatherStore.current?.temperature?.value ?? '--')
 const weatherStatus = computed(() => weatherStore.current ? weatherStore.currentLabel : (weatherStore.error || '天气同步中'))
 const taskNotice = ref('')
@@ -88,8 +105,10 @@ let lastControlsActivity = 0
 const navItems = [
   { path: '/time', label: '时钟', icon: 'clock-20-regular' },
   { path: '/countdown', label: '倒计时', icon: 'arrow-clockwise-20-regular' },
-  { path: '/timer', label: '计时器', icon: 'timer-20-regular' }
+  { path: '/timer', label: '计时器', icon: 'timer-20-regular' },
+  { path: '/classroom', label: '课堂工具', icon: 'apps-20-regular' }
 ]
+const visibleNavItems = computed(() => desktopMini.value && !isClassroom.value ? navItems.filter(item => item.path !== '/classroom') : navItems)
 const activeTaskCount = computed(() => timeStore.activeCountdowns.length + timeStore.activeTimers.length)
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
 const uiScale = computed(() => Math.max(.5, Math.min(2, Number(settingsStore.settings.uiScale) / 100 || 1)))
@@ -140,17 +159,18 @@ function updateTaskOverflow() {
   taskOverflow.value = activeTaskCount.value * cardWidth + Math.max(0, activeTaskCount.value - 1) * gap > element.clientWidth
 }
 
+function shellBottomOf(shell) {
+  const shellRect = shell.getBoundingClientRect()
+  const scale = shell.offsetWidth && shellRect.width ? shellRect.width / shell.offsetWidth : 1
+  // 浏览器聚焦时可能滚动外层容器，排版仍需要未滚动的相对位置。
+  return element => element ? Math.max(0, (element.getBoundingClientRect().bottom - shellRect.top) / scale + shell.scrollTop) : 0
+}
+
 function syncContentSafeTop() {
   if (isSettings.value || dialogActivity.value) return
   const shell = shellRef.value
   if (!shell) return
-  const shellRect = shell.getBoundingClientRect()
-  const scale = shell.offsetWidth ? shellRect.width / shell.offsetWidth : 1
-  const bottomOf = element => {
-    if (!element) return 0
-    if (settingsStore.examModeActive && element === navRef.value) return 0
-    return (element.getBoundingClientRect().bottom - shellRect.top) / scale
-  }
+  const bottomOf = shellBottomOf(shell)
   if (statusDockRef.value) {
     const dockWidth = statusDockRef.value.offsetWidth
     const maxScale = dockWidth > 0 ? shell.offsetWidth / dockWidth : 1
@@ -160,7 +180,7 @@ function syncContentSafeTop() {
   const statusBottom = bottomOf(statusDockRef.value)
   shell.style.setProperty('--stage-status-clearance', `${Math.max(80, Math.ceil(statusBottom + 14))}px`)
   shell.style.setProperty('--nav-safe-top', `${Math.ceil(statusBottom + 12)}px`)
-  const safeTop = Math.max(statusBottom, bottomOf(navRef.value))
+  const safeTop = Math.max(statusBottom, settingsStore.examModeActive ? 0 : bottomOf(navRef.value))
   shell.style.setProperty('--content-safe-top', `${Math.max(0, Math.ceil(safeTop + 10))}px`)
   updateViewPadding()
 }
@@ -173,11 +193,8 @@ function updateViewPadding() {
     for (const view of shell.querySelectorAll('.clock-view, .focus-view')) view.style.paddingTop = ''
     return
   }
-  const shellRect = shell.getBoundingClientRect()
-  const scale = shell.offsetWidth ? shellRect.width / shell.offsetWidth : 1
-  const dockBottom = statusDockRef.value ? (statusDockRef.value.getBoundingClientRect().bottom - shellRect.top) / scale : 0
-  const navBottom = !settingsStore.examModeActive && navRef.value ? (navRef.value.getBoundingClientRect().bottom - shellRect.top) / scale : 0
-  const safeTop = Math.max(0, dockBottom, navBottom) + 10
+  const bottomOf = shellBottomOf(shell)
+  const safeTop = Math.max(bottomOf(statusDockRef.value), bottomOf(navRef.value)) + 10
   for (const view of shell.querySelectorAll('.clock-view, .focus-view')) {
     if (view.classList.contains('compact-boards')) { view.style.paddingTop = ''; continue }
     const viewHeight = view.offsetHeight
@@ -291,9 +308,9 @@ function closeSettings() {
 
 function scheduleIdleReturn() {
   window.clearTimeout(idleReturnTimer)
-  if (!settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value || isSettings.value || dialogActivity.value || purePromptOpen.value) return
+  if (!settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value || isClassroom.value || isSettings.value || dialogActivity.value || purePromptOpen.value) return
   idleReturnTimer = window.setTimeout(() => {
-    if (!settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value || isSettings.value || dialogActivity.value || purePromptOpen.value) return
+    if (!settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value || isClassroom.value || isSettings.value || dialogActivity.value || purePromptOpen.value) return
     if (route.path !== '/time') router.push('/time')
   }, 30000)
 }
@@ -469,6 +486,10 @@ function schedulePurePrompt() {
   }, 1000)
 }
 
+function showAutomaticPurePrompt() {
+  if (!isClassroom.value) schedulePurePrompt()
+}
+
 function enterExamMode() {
   closePurePrompt()
   settingsStore.setExamMode(true)
@@ -541,8 +562,9 @@ watch(() => [settingsStore.settings.timeSyncEnabled, settingsStore.settings.time
     timeSyncTimer = window.setInterval(syncNetworkTime, Math.max(5, Number(settingsStore.settings.timeSyncInterval) || 60) * 60 * 1000)
   }
 })
-watch(isSettings, open => { if (!open) window.setTimeout(schedulePurePrompt, 180) })
-watch([() => settingsStore.settings.idleReturnTime, desktopMini, isHomeworkWindow, isSettings, dialogActivity, purePromptOpen], scheduleIdleReturn)
+watch(isSettings, open => { if (!open) window.setTimeout(showAutomaticPurePrompt, 180) })
+watch(isClassroom, open => { if (open) closePurePrompt() })
+watch([() => settingsStore.settings.idleReturnTime, desktopMini, isHomeworkWindow, isClassroom, isSettings, dialogActivity, purePromptOpen], scheduleIdleReturn)
 
 onMounted(async () => {
   desktopAvailable.value = await probeDesktop()
@@ -556,7 +578,10 @@ onMounted(async () => {
   autoLocateWeather()
   contentStore.recordSchoolDay()
   schoolDayTimer = window.setInterval(() => contentStore.recordSchoolDay(), 60000)
-  dayRotationTimer = window.setInterval(() => { if (upcomingDays.value.length > 1) dayRotation.value = (dayRotation.value + 1) % upcomingDays.value.length }, 15000)
+  dayRotationTimer = window.setInterval(() => {
+    const trigger = importantDaysTrigger.value
+    if (upcomingDays.value.length > 1 && trigger && !trigger.matches(':hover, :focus-visible')) dayRotation.value = (dayRotation.value + 1) % upcomingDays.value.length
+  }, 15000)
   weatherTimer = window.setInterval(() => { if (settingsStore.settings.showWeather) weatherStore.refresh(settingsStore.settings.weatherCityNum, true) }, 30 * 60 * 1000)
   showControlsHandler = event => {
     const at = performance.now()
@@ -635,7 +660,7 @@ onMounted(async () => {
     stopViewPaddingWatch = watch([() => isSettings.value || dialogActivity.value ? null : Math.floor(timeStore.now / 1000), () => route.path], () => nextTick(updateViewPadding))
   }
   syncWakeLock()
-  if (!isHomeworkWindow.value) window.setTimeout(schedulePurePrompt, 550)
+  if (!isHomeworkWindow.value) window.setTimeout(showAutomaticPurePrompt, 550)
 })
 onUnmounted(() => {
   timeSyncController?.abort()
@@ -683,16 +708,21 @@ onUnmounted(() => {
 <template>
   <div class="app-root" :class="{ 'is-desktop': desktopAvailable, 'titlebar-hidden': desktopAvailable && fullscreenActive }">
     <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" data-tauri-drag-region><span data-tauri-drag-region>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button v-if="!desktopMini" type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
-    <div class="app-shell" ref="shellRef" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, 'with-compact-boards': compactClock, 'short-stage': stageHeight < 700, 'compact-footer': stageWidth <= 620, [`window-mode-${desktopWindowMode}`]: desktopAvailable }" :data-display-layout="displayLayout" :data-effective-layout="classroomLayout ? 'classroom' : 'desktop'" :style="{ '--stage-read-scale': stageReadScale }">
+    <div class="app-shell" ref="shellRef" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, 'classroom-route': isClassroom, 'with-compact-boards': compactClock, 'short-stage': stageHeight < 700, 'compact-footer': stageWidth <= 620, [`window-mode-${desktopWindowMode}`]: desktopAvailable }" :data-display-layout="displayLayout" :data-effective-layout="classroomLayout ? 'classroom' : 'desktop'" :style="{ '--stage-read-scale': stageReadScale }">
     <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息">
       <div v-if="settingsStore.settings.showWeather" class="status-weather"><strong>{{ weatherTemperature }}°</strong><FluentIcon icon="weather-partly-cloudy-day-20-regular" :width="18" /><span>{{ weatherStatus }}</span></div>
       <div v-if="settingsStore.settings.showDayProgress" class="status-progress"><span>今日进度</span><div class="status-progress-bar"><i :style="{ width: `${progress}%` }"></i></div><strong>{{ progress.toFixed(0) }}%</strong></div>
-      <div v-if="settingsStore.settings.showImportantDays" class="status-exam"><span>距离 <Transition name="status-swap" mode="out-in"><b :key="featuredDay?.id || 'fallback'" class="status-day-name">{{ featuredDay?.name || '重要日' }}</b></Transition>仅</span><strong>{{ featuredDayRemaining }}</strong><span>天</span></div>
+      <button v-if="settingsStore.settings.showImportantDays" ref="importantDaysTrigger" type="button" class="important-days-trigger" :aria-label="importantDaysLabel" :title="importantDaysLabel" @click="openImportantDays">
+        <FluentIcon icon="calendar-20-regular" :width="16" />
+        <span>{{ featuredDay?.name || '重要日' }}</span>
+        <strong v-if="featuredDay">{{ importantDayStatus(featuredDay.days) }}</strong>
+        <small v-else>{{ importantDays.past.length ? '暂无倒计时' : '未添加' }}</small>
+      </button>
     </header>
     <nav v-if="!isSettings" ref="navRef" class="mode-nav" aria-label="模式切换">
-      <RouterLink v-for="item in navItems" :key="item.path" :to="item.path" :class="{ active: route.path === item.path }"><FluentIcon :icon="item.icon" :width="17" /><span>{{ item.label }}</span></RouterLink>
+      <RouterLink v-for="item in visibleNavItems" :key="item.path" :to="item.path" :class="{ active: item.path === '/classroom' ? isClassroom : route.path === item.path }" :aria-current="item.path === '/classroom' && isClassroom ? 'page' : undefined"><FluentIcon :icon="item.icon" :width="17" /><span>{{ item.label }}</span></RouterLink>
     </nav>
-    <main class="clock-stage"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><component :is="Component" /></Transition></RouterView></main>
+    <main class="clock-stage" :inert="isSettings"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><KeepAlive include="ClassroomView"><component :is="Component" /></KeepAlive></Transition></RouterView></main>
     <template v-if="!isSettings">
       <footer class="clock-footer">
         <button type="button" class="footer-action footer-settings" aria-label="设置" title="设置" @click="openSettings()"><FluentIcon icon="settings-20-regular" :width="19" /></button>
@@ -713,3 +743,34 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.important-days-trigger {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: clamp(4px, 1vw, 8px);
+  min-width: 0;
+  max-width: min(46%, 380px);
+  min-height: 36px;
+  padding: 0 clamp(5px, 1.3vw, 13px);
+  border: 0;
+  border-inline-start: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.important-days-trigger > :is(svg, strong, small) { flex: none; }
+.important-days-trigger > span { min-width: 0; overflow: hidden; color: var(--status-text-color, var(--text-secondary)); text-overflow: ellipsis; }
+.important-days-trigger svg, .important-days-trigger strong { color: var(--accent); }
+.important-days-trigger strong { font-variant-numeric: tabular-nums; }
+.important-days-trigger small { color: var(--status-text-color, var(--text-muted)); font-size: inherit; }
+.important-days-trigger:hover { background: var(--bg-hover); }
+.important-days-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+@media (max-width: 380px) {
+  .important-days-trigger > svg { display: none; }
+}
+</style>

@@ -3,6 +3,15 @@ import { normalizeQuoteEndpoint, quoteApiEndpoints, quoteApiOrder } from './quot
 
 const cyTimeClientHeader = { 'X-CyTime-Client': 'cytime-v1' }
 const BLOCKED_TERMS = ['色情', '赌博', '毒品', '暴力恐怖']
+const QUOTE_TIMEOUT_MS = 4500
+const bundledCategories = new Set(quoteApiEndpoints.flatMap(item => item.categories))
+const discoveredCatalogs = new Map()
+
+function fetchQuoteEndpoint(endpoint, suffix, signal, timeoutMs = QUOTE_TIMEOUT_MS) {
+  const options = { timeoutMs }
+  if (endpoint.id === 'xishi') options.headers = cyTimeClientHeader
+  return fetchJson(`https://${endpoint.host}${endpoint.path}${suffix}`, signal, options)
+}
 
 async function fetchQuoteApi(preferred, signal, route, parse) {
   let lastError
@@ -10,10 +19,8 @@ async function fetchQuoteApi(preferred, signal, route, parse) {
     const endpoint = quoteApiEndpoints.find(item => item.id === id)
     const suffix = route(endpoint)
     if (suffix === null) continue
-    const options = { timeoutMs: 4500 }
-    if (endpoint.id === 'xishi') options.headers = cyTimeClientHeader
     try {
-      return parse(await fetchJson(`https://${endpoint.host}${endpoint.path}${suffix}`, signal, options), endpoint)
+      return parse(await fetchQuoteEndpoint(endpoint, suffix, signal), endpoint)
     } catch (error) {
       if (signal?.aborted || error?.name === 'AbortError') throw error
       lastError = error
@@ -22,10 +29,12 @@ async function fetchQuoteApi(preferred, signal, route, parse) {
   throw lastError || new Error('语录服务暂不可用')
 }
 
-function quoteQuery(endpoint, categories) {
-  // 只把该服务支持的分类发出去；一个都不支持时直接跳过，避免无意义的 404。
-  const supported = endpoint.categories ? categories.filter(category => endpoint.categories.includes(category)) : categories
-  if (categories.length && endpoint.categories && !supported.length) return null
+function quoteQuery(endpoint, categories, preferred) {
+  const catalog = discoveredCatalogs.get(endpoint.id)
+  const known = catalog?.categories ?? endpoint.categories
+  // 冷启动时，首选服务可以尝试用户曾选择过的新分类；已知属于备用站的分类直接交给备用站。
+  const supported = categories.filter(category => known.includes(category) || (!catalog && endpoint.id === preferred && !bundledCategories.has(category)))
+  if (categories.length && !supported.length) return null
   const query = new URLSearchParams(endpoint.id === 'xishu' ? { count: '1' } : { format: 'json' })
   if (endpoint.id === 'xishu') {
     for (const category of supported) query.append('category', category)
@@ -35,7 +44,8 @@ function quoteQuery(endpoint, categories) {
 
 export function fetchCloudQuote(signal, categories = [], preferred) {
   const selected = [...new Set(categories.filter(category => typeof category === 'string' && category.trim()).map(category => category.trim()))]
-  return fetchQuoteApi(preferred, signal, endpoint => quoteQuery(endpoint, selected), (payload, endpoint) => {
+  const first = normalizeQuoteEndpoint(preferred)
+  return fetchQuoteApi(first, signal, endpoint => quoteQuery(endpoint, selected, first), (payload, endpoint) => {
     const quote = typeof payload?.value === 'string' ? payload.value.trim() : ''
     if (!quote || BLOCKED_TERMS.some(term => quote.includes(term))) throw new Error('语录内容无效')
     // 备用服务会把不认识的分类过滤后当成“全库”；用响应里的 category 再确认一次。
@@ -51,24 +61,49 @@ export function fetchCloudQuote(signal, categories = [], preferred) {
   })
 }
 
-// 昔枢没有分类/统计接口，使用它自己的静态分类，不再借用昔言/昔时的旧目录。
-export function fetchQuoteCategories(signal, preferred) {
-  const endpoint = quoteApiEndpoints.find(item => item.id === normalizeQuoteEndpoint(preferred))
-  if (endpoint?.categories && !endpoint.catalog) return Promise.resolve([...endpoint.categories])
-  return fetchQuoteApi(preferred, signal, item => item.catalog ? '/categories' : null, response => {
-    if (!Array.isArray(response?.categories)) throw new Error('语录分类格式无效')
-    return response.categories.filter(item => typeof item === 'string' && item.trim())
-  })
+function readCategories(payload) {
+  return Array.isArray(payload?.categories) ? [...new Set(payload.categories.filter(item => typeof item === 'string' && item.trim()).map(item => item.trim()))] : []
 }
 
-export function fetchQuoteStats(signal, preferred) {
+function readStats(payload, field, categories) {
+  const counts = payload?.[field]
+  if (!Number.isInteger(payload?.total) || payload.total < 0 || !counts || typeof counts !== 'object' || Array.isArray(counts)) return null
+  const pairs = Object.entries(counts)
+  if (pairs.some(([, count]) => !Number.isInteger(count) || count < 0) || pairs.reduce((sum, [, count]) => sum + count, 0) !== payload.total) return null
+  if (categories.length && (pairs.length !== categories.length || categories.some(category => !Object.hasOwn(counts, category)))) return null
+  return { total: payload.total, counts: Object.fromEntries(pairs) }
+}
+
+export async function fetchQuoteCatalog(signal, preferred) {
   const endpoint = quoteApiEndpoints.find(item => item.id === normalizeQuoteEndpoint(preferred))
-  if (endpoint && !endpoint.catalog) return Promise.resolve(null)
-  return fetchQuoteApi(preferred, signal, item => item.catalog ? '/count' : null, response => {
-    const { total, categories } = response || {}
-    if (!Number.isInteger(total) || total < 0 || !categories || typeof categories !== 'object' || Array.isArray(categories)) throw new Error('语录统计格式无效')
-    return { total, categories }
-  })
+  const deadline = Date.now() + QUOTE_TIMEOUT_MS
+  const optional = async suffix => {
+    const timeoutMs = deadline - Date.now()
+    signal?.throwIfAborted()
+    if (timeoutMs <= 0) return null
+    try { return await fetchQuoteEndpoint(endpoint, suffix, signal, timeoutMs) }
+    catch (error) {
+      if (signal?.aborted || error?.name === 'AbortError') throw error
+      return null
+    }
+  }
+  let categories, stats
+  if (endpoint.id === 'xishu') {
+    // 昔枢一次返回目录和计数。拆分的接口共用同一个请求时限。
+    const response = await optional('/categories')
+    categories = readCategories(response)
+    stats = (categories.length ? readStats(response, 'counts', categories) : null)
+      || readStats(await optional('/count'), 'categories', categories)
+  } else {
+    const [list, count] = await Promise.all([optional('/categories'), optional('/count')])
+    categories = readCategories(list)
+    stats = readStats(count, 'categories', categories)
+  }
+  if (!categories.length && stats) categories = Object.keys(stats.counts)
+  if (!categories.length) return { categories: [...(discoveredCatalogs.get(endpoint.id)?.categories ?? endpoint.categories)], counts: {}, total: null }
+  const result = { categories, counts: stats?.counts || {}, total: stats?.total ?? null }
+  discoveredCatalogs.set(endpoint.id, result)
+  return result
 }
 
 export async function readQuoteFile(file) {

@@ -101,6 +101,10 @@ html[data-font="wengfaluosi"] .clock-view { --clock-unit: 19px; --clock-stretch:
 .compact-boards .hero-quote { margin-top: 14px; min-height: 0; }
 
 .app-shell[data-effective-layout="classroom"] .mode-nav { top: var(--nav-safe-top, 80px); }
+.app-shell.classroom-route:not(.mini-mode) .mode-nav { top: var(--nav-safe-top, 62px); }
+@media (max-width: 440px) {
+  .mode-nav a { gap: 4px; padding-inline: 8px; }
+}
 .app-shell[data-effective-layout="classroom"] { --homework-bottom: calc(46px + 24px * var(--stage-read-scale)); }
 .app-shell[data-effective-layout="classroom"] .mode-nav a { font-size: calc(13px * var(--stage-read-scale)); }
 .app-shell[data-effective-layout="classroom"] .clock-footer {

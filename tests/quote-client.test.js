@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createPinia } from 'pinia'
 import { nextTick } from 'vue'
-import { fetchCloudQuote, fetchQuoteCategories, fetchQuoteStats } from '../src/services/quotes.js'
+import { fetchCloudQuote, fetchQuoteCatalog } from '../src/services/quotes.js'
 import { prepareBackupRestore } from '../src/services/backup.js'
 import { useSettingsStore } from '../src/stores/settings.js'
 
@@ -82,28 +82,92 @@ test('a quote outside the selected categories is rejected', async t => {
   assert.deepEqual(calls.map(url => url.hostname), ['api.cyrene.hk'])
 })
 
-test('xishu uses its own category list and does not borrow metadata', async t => {
-  const fetch = t.mock.method(globalThis, 'fetch', () => assert.fail('xishu metadata must not be fetched'))
+test('an old or offline xishu catalog falls back to its own built-in categories', async t => {
+  const calls = []
+  let offline = false
+  t.mock.method(globalThis, 'fetch', async input => {
+    calls.push(new URL(input))
+    if (offline) throw new TypeError('Offline')
+    return new Response(null, { status: 404 })
+  })
 
-  assert.deepEqual(await fetchQuoteCategories(undefined, 'xishu'), ['人民日报', '名人名言', '崩铁', '英语'])
-  assert.deepEqual(await fetchQuoteCategories(), ['人民日报', '名人名言', '崩铁', '英语'])
-  assert.equal(await fetchQuoteStats(undefined, 'xishu'), null)
-  assert.equal(fetch.mock.callCount(), 0)
+  const fallback = { categories: ['人民日报', '名人名言', '崩铁', '英语'], counts: {}, total: null }
+  assert.deepEqual(await fetchQuoteCatalog(), fallback)
+  offline = true
+  assert.deepEqual(await fetchQuoteCatalog(undefined, 'xishu'), fallback)
+  assert.deepEqual(calls.map(url => url.hostname), Array(4).fill('api.cyrene.hk'))
+  assert.deepEqual(calls.map(url => url.pathname), ['/v1/quote/categories', '/v1/quote/count', '/v1/quote/categories', '/v1/quote/count'])
 })
 
-test('catalog endpoints still provide categories and counts', async t => {
+test('xishu uses the published category list and counts in one request', async t => {
   const calls = []
+  const counts = { 崩铁: 210, 英语: 7, 幽默解压: 3 }
+  t.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(input)
+    calls.push(url)
+    if (url.pathname.endsWith('/categories')) return Response.json({ categories: ['崩铁', '英语', '幽默解压'], counts, total: 220 })
+    return Response.json({ value: '笑话', category: ['幽默解压'] })
+  })
+
+  assert.deepEqual(await fetchQuoteCatalog(), { categories: ['崩铁', '英语', '幽默解压'], counts, total: 220 })
+  assert.deepEqual(calls.map(url => url.href), ['https://api.cyrene.hk/v1/quote/categories'])
+  assert.equal((await fetchCloudQuote(undefined, ['幽默解压'])).source, 'xishu')
+  assert.deepEqual(calls[1].searchParams.getAll('category'), ['幽默解压'])
+})
+
+test('xishu can read a split catalog or its count document by itself', async t => {
+  const calls = []
+  let listAvailable = true
+  t.mock.method(globalThis, 'fetch', async input => {
+    const url = new URL(input)
+    calls.push(url)
+    if (url.pathname.endsWith('/categories')) return listAvailable ? Response.json({ categories: ['英语'] }) : new Response(null, { status: 404 })
+    return Response.json({ total: 6, categories: { 英语: 6 } })
+  })
+
+  const catalog = { categories: ['英语'], counts: { 英语: 6 }, total: 6 }
+  assert.deepEqual(await fetchQuoteCatalog(), catalog)
+  listAvailable = false
+  assert.deepEqual(await fetchQuoteCatalog(), catalog)
+  assert.deepEqual(calls.map(url => url.hostname), Array(4).fill('api.cyrene.hk'))
+})
+
+test('an alternate preference can try a newly added category on cold start', async t => {
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async input => {
+    calls.push(new URL(input))
+    return Response.json({ value: '读书语录', category: ['读书'] })
+  })
+  assert.equal((await fetchCloudQuote(undefined, ['读书'], 'xiyan')).source, 'xiyan')
+  assert.deepEqual(calls.map(url => url.hostname), ['quote.cyrene.hk'])
+  assert.equal(calls[0].searchParams.get('category'), '读书')
+})
+
+test('alternate catalog endpoints still independently provide categories and counts', async t => {
+  const calls = []
+  let matching = true
   t.mock.method(globalThis, 'fetch', async input => {
     const url = new URL(input)
     calls.push(url)
     if (url.pathname.endsWith('/categories')) return Response.json({ categories: ['崩铁'] })
-    return Response.json({ total: 2, categories: { 崩铁: 2 } })
+    return Response.json({ total: 2, categories: matching ? { 崩铁: 2 } : { 英语: 2 } })
   })
 
-  assert.deepEqual(await fetchQuoteCategories(undefined, 'xiyan'), ['崩铁'])
-  assert.deepEqual(await fetchQuoteStats(undefined, 'xiyan'), { total: 2, categories: { 崩铁: 2 } })
+  assert.deepEqual(await fetchQuoteCatalog(undefined, 'xiyan'), { categories: ['崩铁'], counts: { 崩铁: 2 }, total: 2 })
   assert.deepEqual(calls.map(url => url.hostname), ['quote.cyrene.hk', 'quote.cyrene.hk'])
   assert.deepEqual(calls.map(url => url.pathname), ['/api/v1/quote/categories', '/api/v1/quote/count'])
+  matching = false
+  assert.deepEqual(await fetchQuoteCatalog(undefined, 'xiyan'), { categories: ['崩铁'], counts: {}, total: null })
+})
+
+test('a cancelled catalog never looks up secondary metadata', async t => {
+  const fetch = t.mock.method(globalThis, 'fetch', () => new Promise(() => {}))
+  const controller = new AbortController()
+  const result = fetchQuoteCatalog(controller.signal, 'xishu')
+  controller.abort()
+  await assert.rejects(result, { name: 'AbortError' })
+  await assert.rejects(fetchQuoteCatalog(controller.signal), { name: 'AbortError' })
+  assert.equal(fetch.mock.callCount(), 1)
 })
 
 test('cancelled requests never contact backup providers', async t => {

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { searchXiaomiCities, locateWeatherCity } from '../services/weather'
-import { fetchQuoteCategories, fetchQuoteStats, readQuoteFile } from '../services/quotes'
+import { fetchQuoteCatalog, readQuoteFile } from '../services/quotes'
 import { getPlatform } from '../services/platform'
 import { checkDesktopUpdate, downloadDesktopUpdate, isDesktop as detectDesktop, setDesktopAutostart, setDesktopUriRegistration } from '../services/desktop'
 import { fetchNetworkTime, timeSourceOptions } from '../services/timeSync'
@@ -12,6 +12,7 @@ import { useTimeStore } from '../stores/time'
 import { FILING_NAME, FILING_URL, QUOTE_API_DOCS } from '../config/branding'
 import { isLessonOnDate, lessonTimeToSeconds, scheduleWeekdays, scheduleWeekParity, scheduleWeekTypes } from '../services/schedule'
 import DisplayCustomizationPanel from '../components/DisplayCustomizationPanel.vue'
+import ImportantDaysPanel from '../components/ImportantDaysPanel.vue'
 const QuoteSourcePanel = defineAsyncComponent(() => import('../components/QuoteSourcePanel.vue'))
 const LocalQuoteSourcePanel = defineAsyncComponent(() => import('../components/LocalQuoteSourcePanel.vue'))
 const DutySettingsPanel = defineAsyncComponent(() => import('../components/DutySettingsPanel.vue'))
@@ -78,8 +79,6 @@ const todayLessons = computed(() => contentStore.content.schedule.filter(item =>
 const currentWeekType = computed(() => scheduleWeekParity(new Date(today.value), contentStore.content.scheduleWeekOne))
 const usesWeekCycle = computed(() => contentStore.content.schedule.some(item => item.weeks === 'odd' || item.weeks === 'even'))
 
-const importantName = ref('')
-const importantDate = ref('')
 const quoteDraft = ref('')
 const quoteImportInput = ref(null)
 const lessonSubject = ref('')
@@ -106,7 +105,7 @@ let manualTimeController
 let disposed = false
 const quoteCategories = ref([])
 const quoteCounts = ref({})
-const quoteTotal = ref(0)
+const quoteTotal = ref(null)
 const quoteCategoryLoading = ref(false)
 const quoteConfigOpen = ref(false)
 const quoteManagerOpen = ref(false)
@@ -181,8 +180,6 @@ function save() {
   toastRef.value?.add({ title: '设置已保存', duration: 2400 })
 }
 function cancel() { emit('close') }
-function daysUntil(date) { return Math.max(0, Math.ceil((new Date(`${date}T00:00:00`).getTime() - Date.now()) / 86400000)) }
-function addImportant() { contentStore.addImportantDay(importantName.value.trim(), importantDate.value); importantName.value = ''; importantDate.value = '' }
 function addQuote() { const value = quoteDraft.value.trim(); if (!value) return; contentStore.addQuote(value); quoteDraft.value = ''; quotePage.value = quotePageCount.value }
 function openQuoteManager() { quoteManagerOpen.value = true; quotePage.value = 1; selectedQuotes.value = [] }
 function toggleAllPage() {
@@ -253,17 +250,22 @@ async function refreshQuoteCategories() {
   const controller = new AbortController()
   quoteConfigController = controller
   quoteCategoryLoading.value = true
+  quoteCategories.value = []
+  quoteCounts.value = {}
+  quoteTotal.value = null
   const preferred = draft.quoteApiEndpoint || settingsStore.settings.quoteApiEndpoint
   try {
-    const [list, stats] = await Promise.all([fetchQuoteCategories(controller.signal, preferred).catch(() => []), fetchQuoteStats(controller.signal, preferred).catch(() => null)])
+    const catalog = await fetchQuoteCatalog(controller.signal, preferred)
     if (disposed || request !== quoteConfigGeneration || controller.signal.aborted) return
-    const categories = list.length ? list : ['崩铁', '幽默解压', '名人名言', '人民日报']
-    quoteCategories.value = [...new Set([...categories, ...(draft.quoteApiCategories || [])])]
-    quoteCounts.value = stats?.categories || {}
-    quoteTotal.value = stats?.total || 0
+    quoteCategories.value = [...new Set([...catalog.categories, ...(draft.quoteApiCategories || [])])]
+    quoteCounts.value = catalog.counts
+    quoteTotal.value = catalog.total
+  } catch (error) {
+    if (!controller.signal.aborted) console.warn('无法读取语录目录', error)
   } finally { if (!disposed && request === quoteConfigGeneration) quoteCategoryLoading.value = false }
 }
 function toggleQuoteCategory(category) { const selected = new Set(draft.quoteApiCategories || []); if (selected.has(category)) selected.delete(category); else selected.add(category); draft.quoteApiCategories = [...selected] }
+function quoteCountFor(category) { return Object.hasOwn(quoteCounts.value, category) ? quoteCounts.value[category] : null }
 function openQuoteConfig() { quoteConfigOpen.value = true; refreshQuoteCategories() }
 function toggleCategoryWeights() {
   draft.quoteApiCategoryWeightsEnabled = !draft.quoteApiCategoryWeightsEnabled
@@ -494,7 +496,7 @@ onBeforeUnmount(() => {
           <section class="setting-card setting-row"><div><h3>课程提示</h3><p>显示当前课程和下一节课。</p></div><button type="button" class="switch" :class="{ on: draft.showSchedule }" :aria-pressed="draft.showSchedule" @click="draft.showSchedule = !draft.showSchedule"><i></i></button></section>
         </template>
 
-        <template v-else-if="activePane === 'countdown'"><span class="settings-kicker">基础功能</span><h2>重要日</h2><p class="settings-lead">记下考试、生日和其它重要日期。</p><section class="setting-card"><div class="card-toolbar"><div><h3>添加日期</h3></div><div class="inline-form"><input v-model="importantName" placeholder="名称" /><FluentDatePicker v-model="importantDate" placeholder="日期" /><button type="button" class="subtle-button" @click="addImportant">添加</button></div></div><div class="managed-list"><div v-for="item in contentStore.content.importantDays" :key="item.id" class="managed-item"><span><strong>{{ item.name }}</strong><small>{{ item.date }} · 还有 {{ daysUntil(item.date) }} 天</small></span><button type="button" class="icon-text-button" @click="contentStore.removeImportantDay(item)">删除</button></div></div></section></template>
+        <ImportantDaysPanel v-else-if="activePane === 'countdown'" :focus-on-open="props.initialPane === 'countdown'" />
 
         <template v-else-if="activePane === 'schedule'">
           <span class="settings-kicker">基础功能</span><h2>课程表</h2><p class="settings-lead">查看本周安排，按天排课，或与其他应用交换 CSES 课表。</p>
@@ -619,8 +621,8 @@ onBeforeUnmount(() => {
       <section class="uri-help-modal quote-config-modal">
         <header><div><span class="settings-kicker">在线语录</span><h2>语录分类</h2></div><button type="button" class="dialog-close" aria-label="关闭分类设置" @click="quoteConfigOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></header>
         <div class="uri-help-content">
-          <p>选择想看的分类。设为「全部」时，会从整个语录库抽取。</p><p class="setting-copy"><a class="project-link" :href="QUOTE_API_DOCS" target="_blank" rel="noreferrer">昔枢服务说明</a></p>
-          <div class="category-chips quote-config-chips"><button type="button" class="category-chip" :class="{ active: !draft.quoteApiCategories?.length }" @click="draft.quoteApiCategories = []">全部<small v-if="quoteTotal">· {{ quoteTotal }}</small></button><button v-for="category in quoteCategories" :key="category" type="button" class="category-chip" :class="{ active: draft.quoteApiCategories?.includes(category) }" @click="toggleQuoteCategory(category)">{{ category }}<small v-if="quoteCounts[category] !== undefined">· {{ quoteCounts[category] }}</small></button><span v-if="quoteCategoryLoading" class="quote-config-hint">正在获取分类…</span></div>
+          <p>选择想看的分类，或从整个语录库抽取。分类和数量来自首选服务，服务不可用时仍可使用本地保存的分类。</p><p class="setting-copy"><a class="project-link" :href="QUOTE_API_DOCS" target="_blank" rel="noreferrer">昔枢服务说明</a></p>
+          <div class="category-chips quote-config-chips"><button type="button" class="category-chip" :class="{ active: !draft.quoteApiCategories?.length }" @click="draft.quoteApiCategories = []">全部<small v-if="quoteTotal !== null">· {{ quoteTotal }}</small></button><button v-for="category in quoteCategories" :key="category" type="button" class="category-chip" :class="{ active: draft.quoteApiCategories?.includes(category) }" @click="toggleQuoteCategory(category)">{{ category }}<small v-if="quoteCountFor(category) !== null">· {{ quoteCountFor(category) }}</small></button><span v-if="quoteCategoryLoading" class="quote-config-hint">正在获取分类…</span></div>
           <div class="setting-row quote-weight-toggle"><div><h3>调整分类比重</h3><p>比重越大，出现机会越多。</p></div><button type="button" class="switch" :class="{ on: draft.quoteApiCategoryWeightsEnabled }" :disabled="!draft.quoteApiCategories?.length" @click="toggleCategoryWeights"><i></i></button></div>
           <div v-if="draft.quoteApiCategoryWeightsEnabled && draft.quoteApiCategories?.length" class="category-weight-list"><label v-for="category in draft.quoteApiCategories" :key="category" class="category-weight-row"><span>{{ category }}</span><input type="number" min="0" max="9999" :value="categoryWeight(category)" @input="setCategoryWeight(category, $event)" /></label></div>
         </div><footer><button type="button" class="save-button" @click="quoteConfigOpen = false">完成</button></footer>

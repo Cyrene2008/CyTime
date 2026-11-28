@@ -106,6 +106,8 @@ async function bootstrap() {
       { path: '/clock', redirect: '/time' },
       { path: '/countdown', component: () => import('./views/CountdownView.vue') },
       { path: '/timer', component: () => import('./views/TimerView.vue') },
+      { path: '/classroom', component: () => import('./views/ClassroomView.vue'), meta: { classroom: true } },
+      { path: '/classroom-flow', component: () => import('./views/ClassroomFlowView.vue'), meta: { classroom: true } },
       { path: '/settings', redirect: '/time' },
       // SPA fallback for unknown paths (incl. deep-link boot)
       { path: '/:pathMatch(.*)*', redirect: () => startupPath }
