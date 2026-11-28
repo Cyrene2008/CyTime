@@ -56,7 +56,8 @@ const currentSurfaceAllows = () => isSettings.value && pointerPreview.value !== 
   : effectsAllowed(isSettings.value ? 'settings' : route.meta.swarmSurface)
 const bootCurtain = ref(props.desktopLaunch || (settingsStore.settings.swarmEffects && currentSurfaceAllows() && window.matchMedia(swarmMotionQuery).matches))
 const launchSettling = ref(props.desktopLaunch)
-const overlayOpen = computed(() => isSettings.value || !!dialogActivity.value || purePromptOpen.value)
+const modalOpen = computed(() => isSettings.value || dialogActivity.value > 0)
+const overlayOpen = computed(() => modalOpen.value || purePromptOpen.value)
 let launchController
 let nativePreparation = Promise.resolve()
 let disposed = false
@@ -65,7 +66,7 @@ const swarm = useSwarmEffects(router, {
   enabled: () => (pointerPreview.value ?? settingsStore.settings.swarmEffects) === true,
   sound: () => settingsStore.settings.swarmSound === true,
   suspended: () => launchSettling.value || isHomeworkWindow.value,
-  allowsRoute: candidate => !overlayOpen.value && effectsAllowed(candidate.meta.swarmSurface),
+  allowsRoute: candidate => !modalOpen.value && effectsAllowed(candidate.meta.swarmSurface),
   allowsSurface: currentSurfaceAllows
 })
 const swarmLayout = computed(() => bootCurtain.value || swarm.active.value)
@@ -654,7 +655,12 @@ watch(() => [settingsStore.settings.timeSyncEnabled, settingsStore.settings.time
 })
 watch(isSettings, open => { if (!open) queueAutomaticPurePrompt(180) })
 watch(swarmLayout, showAutomaticPurePrompt)
-watch(isClassroom, open => { if (open) closePurePrompt() })
+watch(() => route.fullPath, () => {
+  // The non-modal prompt yields to navigation, even if its timer hasn't opened it yet.
+  window.clearTimeout(automaticPurePromptTimer)
+  automaticPurePromptPending = false
+  closePurePrompt()
+}, { flush: 'sync' })
 watch([() => settingsStore.settings.idleReturnTime, desktopMini, isHomeworkWindow, isClassroom, isSettings, dialogActivity, purePromptOpen], scheduleIdleReturn)
 
 onMounted(async () => {
