@@ -46,11 +46,20 @@ const demand = computed(() => weeklyDemand(rules.value))
 const editing = ref(false)
 const pendingFile = shallowRef(null)
 const choice = shallowRef(null)
+const pendingRoster = shallowRef(null)
+const rosterCounts = computed(() => {
+  const result = { male: 0, female: 0, unknown: 0 }
+  for (const { gender } of pendingRoster.value?.members ?? []) {
+    result[gender === 'male' || gender === 'female' ? gender : 'unknown']++
+  }
+  return result
+})
 const choiceKey = ref(0)
 let selection = {}
 function resetSelection() {
   pendingFile.value = null
   choice.value = null
+  pendingRoster.value = null
   selection = {}
 }
 function confirmRules(value) {
@@ -111,8 +120,8 @@ async function processImport(extra = {}) {
       choice.value = roster.choice
       return
     }
-    await saveRoster(roster)
     resetSelection()
+    pendingRoster.value = roster
   } catch (error) {
     failed.value = true
     message.value = error.message || '文件读取失败，请重新选择。'
@@ -125,6 +134,20 @@ function importFile(event) {
   resetSelection()
   pendingFile.value = file
   return processImport()
+}
+async function confirmImport() {
+  const roster = pendingRoster.value
+  if (!roster || busy.value || editing.value || !isDateString(start.value) || rosterCounts.value.unknown) return
+  busy.value = true
+  failed.value = false
+  message.value = ''
+  try {
+    await saveRoster(roster)
+    resetSelection()
+  } catch (error) {
+    failed.value = true
+    message.value = error.message || '排班生成失败，请检查名单和规则。'
+  } finally { busy.value = false }
 }
 async function applyExisting() {
   const plan = effectivePlan.value
@@ -166,13 +189,25 @@ async function exportWeek() {
     <div class="duty-preview-toolbar cleaning-toolbar" :aria-busy="busy">
       <label>生效日期<FluentDatePicker v-model="start" :disabled="busy" placeholder="选择日期" /></label>
       <button type="button" class="subtle-button cleaning-import" :disabled="busy || editing || !isDateString(start)" @click="fileInput?.click()">
-        <FluentIcon icon="arrow-upload-20-regular" :width="14" />{{ busy ? '正在排班…' : '导入名单并排班' }}
+        <FluentIcon icon="arrow-upload-20-regular" :width="14" />{{ busy ? '处理中…' : '选择名单文件' }}
       </button>
-      <button v-if="pickedRules && effectivePlan && !editing" type="button" class="subtle-button" :disabled="busy || Boolean(choice)" @click="applyExisting">用现有名单应用规则</button>
+      <button v-if="pickedRules && effectivePlan && !editing" type="button" class="subtle-button" :disabled="busy || Boolean(choice || pendingRoster)" @click="applyExisting">用现有名单应用规则</button>
       <input ref="fileInput" type="file" accept=".csv,.tsv,.xls,.xlsx,.xlsm,.xlsb,.ods,.json" hidden aria-label="清洁名册文件" @change="importFile" />
     </div>
-    <small class="duty-hint">{{ pickedRules ? '规则待应用。选择名单或使用现有名单后生效。' : '导入 Excel、CSV 或 ODS 名单。系统会识别姓名和性别，遇到多个候选班级或工作表时可自行选择。' }}</small>
+    <small class="duty-hint">{{ pickedRules ? '规则待应用。确认导入名单或使用现有名单后生效。' : '导入 Excel、CSV 或 ODS 名单。一次导入一个班，识别出多个班级或工作表时可选择其中一个。' }}</small>
     <CleaningImportChoice v-if="choice" :key="choiceKey" :choice="choice" :busy="busy" @continue="processImport" @cancel="resetSelection(); message = ''" />
+    <section v-if="pendingRoster" class="cleaning-import-preview" aria-label="待确认的清洁名单">
+      <h4>核对导入名单</h4>
+      <p>{{ pendingRoster.name }} · {{ pendingRoster.members.length }} 人（男 {{ rosterCounts.male }}，女 {{ rosterCounts.female }}）· {{ start || '请选择生效日期' }}</p>
+      <p v-if="rosterCounts.unknown" class="field-error" role="alert">有 {{ rosterCounts.unknown }} 人的性别未识别，请补全后重新选择文件。</p>
+      <details><summary>查看完整名单</summary>
+        <ul><li v-for="(member, index) in pendingRoster.members" :key="index">{{ member.name }} · {{ member.gender === 'male' ? '男' : member.gender === 'female' ? '女' : '待补全' }}</li></ul>
+      </details>
+      <div class="data-actions">
+        <button type="button" class="subtle-button cleaning-import" :disabled="busy || editing || !isDateString(start) || Boolean(rosterCounts.unknown)" @click="confirmImport">确认生成排班</button>
+        <button type="button" class="subtle-button" :disabled="busy" @click="resetSelection(); message = ''">取消导入</button>
+      </div>
+    </section>
     <p v-for="plan in [currentPlan, nextPlan].filter(Boolean)" :key="plan.start" class="cleaning-current">
       {{ plan.start > today ? '待生效' : '当前' }} · {{ plan.name }} · {{ plan.male.length + plan.female.length }} 人（男 {{ plan.male.length }}，女 {{ plan.female.length }}） · {{ plan.start }} 起
     </p>
@@ -216,6 +251,9 @@ async function exportWeek() {
 .cleaning-setup .cleaning-import { border: 1px solid var(--border-default); color: var(--accent); background: var(--accent-50); }
 .cleaning-setup .cleaning-import:hover:not(:disabled) { border-color: var(--accent); }
 .cleaning-current { overflow-wrap: anywhere; }
+.cleaning-import-preview { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--border-default); border-radius: 6px; }
+.cleaning-import-preview :is(h4, p, ul) { margin: 0; }
+.cleaning-import-preview ul { max-height: 10em; padding-inline-start: 20px; overflow: auto; }
 @media (pointer: coarse) {
   .cleaning-week button, .cleaning-sessions button, .cleaning-import { min-height: 36px; }
   .cleaning-week button { min-width: 36px; }

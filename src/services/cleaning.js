@@ -50,7 +50,7 @@ function bounded(value, min, max) {
 
 // Keep the feasible range of cumulative female assignments for each day.
 // At a roster change, a returning pupil may still be resting for part of week one.
-function allocateWeek(days, male, female, available, start, demand) {
+function allocateWeek(days, male, female, available, start, demand, activeDays) {
   let total = 0
   let open = 0
   let required = 0
@@ -60,7 +60,10 @@ function allocateWeek(days, male, female, available, start, demand) {
     open += slots.open
     required += slots.female
     const previous = ranges.at(-1)
-    const ready = names => names.reduce((n, name) => n + Number((available.get(name) ?? 0) <= day), 0)
+    // A successor can replace the end of week one. Keep the weekly layout,
+    // but earlier duties cannot constrain shifts that will never be assigned.
+    const ready = names => day >= activeDays ? names.length
+      : names.reduce((n, name) => n + Number((available.get(name) ?? 0) <= day), 0)
     const low = Math.max(previous.low + slots.female, total - ready(male))
     const high = Math.min(previous.high + slots.open + slots.female, ready(female))
     if (low > high) throw new Error(`${dateAdd(start, day)} 交接时已休满六天的人数不足，请调整生效日期或增加人员。`)
@@ -130,8 +133,8 @@ function samePlan(plan, groups, rules) {
   return sameMembers(plan, groups) && JSON.stringify(plan.rules || defaultRules) === JSON.stringify(rules)
 }
 
-function appendPlan(plans, groups, name, start, rules) {
-  if (samePlan(plans.at(-1), groups, rules)) return
+function appendPlan(plans, groups, end) {
+  const { name, start, rules = defaultRules } = groups
   const demand = weeklyDemand(rules)
   const size = groups.male.length + groups.female.length
   if (size < demand.total || groups.male.length < demand.male || groups.female.length < demand.female) {
@@ -142,6 +145,7 @@ function appendPlan(plans, groups, name, start, rules) {
   const male = [...groups.male].sort(byReleaseDay)
   const female = [...groups.female].sort(byReleaseDay)
   const days = weekDays(start, rules)
+  const activeDays = end ? Math.min(days.length, (Date.parse(end) - Date.parse(start)) / 86400000) : days.length
   const plan = { name, start, male, female, rules }
   if (demand.any === demand.total) {
     // A single unrestricted position must rotate through both groups, even in a small class.
@@ -150,12 +154,12 @@ function appendPlan(plans, groups, name, start, rules) {
     plan.order = Array.from({ length: size }, (_, i) =>
       Math.round((i + 1) * female.length / size) > f ? female[f++] : male[m++]).sort(byReleaseDay)
     let filled = 0
-    for (const [day, slots] of days.entries()) {
+    for (const [day, slots] of days.slice(0, activeDays).entries()) {
       filled += slots.total
       if (filled && (available.get(plan.order[filled - 1]) || 0) > day) throw new Error(`${dateAdd(start, day)} 交接时可值日人数不足`)
     }
   } else {
-    plan.femaleSlots = allocateWeek(days, male, female, available, start, demand)
+    plan.femaleSlots = allocateWeek(days, male, female, available, start, demand, activeDays)
   }
   plans.push(plan)
 }
@@ -171,9 +175,14 @@ export function updateCleaningPlans(plans, roster, start, rules = cleaningPlanOn
   const groups = rosterGroups(roster.members)
   if (samePlan(cleaningPlanOn(plans, start), groups, rules)) return plans
   const next = plans.filter(plan => plan.start < start)
-  appendPlan(next, groups, roster.name || '清洁名单', start, rules)
-  // Inserting an earlier change can move the last duty of someone in a later roster.
-  for (const plan of plans) if (plan.start > start) appendPlan(next, plan, plan.name, plan.start, plan.rules || defaultRules)
+  const changes = []
+  const candidates = [{ ...groups, name: roster.name || '清洁名单', start, rules }, ...plans.filter(plan => plan.start > start)]
+  // Remove redundant boundaries before determining when each plan stops applying.
+  for (const plan of candidates) {
+    if (!samePlan(changes.at(-1) || next.at(-1), plan, plan.rules || defaultRules)) changes.push(plan)
+  }
+  // Rebuild later plans: earlier changes can move their members' last duties.
+  for (const [i, plan] of changes.entries()) appendPlan(next, plan, changes[i + 1]?.start)
   return next
 }
 

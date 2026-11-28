@@ -5,8 +5,12 @@ const props = defineProps({ choice: { type: Object, required: true }, busy: Bool
 const emit = defineEmits(['continue', 'cancel'])
 const c = props.choice
 const selected = ref(c.kind === 'class' ? c.classes[0] : c.sheetName)
+const available = c.used || []
+const nameColumn = available.includes(c.columns?.name) ? c.columns.name : available[0] ?? 0
+const genderColumn = available.includes(c.columns?.gender) && c.columns.gender !== nameColumn
+  ? c.columns.gender : available.find(i => i !== nameColumn) ?? -1
 const map = reactive({
-  name: c.columns?.name ?? 0, gender: c.columns?.gender ?? 1, start: c.firstData ?? 2,
+  name: nameColumn, gender: genderColumn, start: c.firstData ?? 2,
   extra: -1, male: '', female: ''
 })
 function letter(index) {
@@ -33,6 +37,7 @@ function proceed() {
     </template>
     <template v-else>
       <p>{{ choice.hint }}</p>
+      <p>一次导入一个班。如果班级列未被识别，请先把该班单独保存为一份文件。</p>
       <div class="sample-wrap"><table><thead><tr><th>行</th><th v-for="i in choice.used.slice(0,12)" :key="i">{{ letter(i) }}</th></tr></thead>
         <tbody><tr v-for="row in choice.sample" :key="row.number"><th>{{ row.number }}</th><td v-for="i in choice.used.slice(0,12)" :key="i">{{ row.cells[i] }}</td></tr></tbody></table></div>
       <div class="mapping">

@@ -2,6 +2,7 @@ import { validCleaningPlans } from './cleaning.js'
 import { migrateQuoteSettings } from './quoteEndpoints.js'
 
 import { lessonTimeToSeconds, scheduleWeekTypes } from './schedule.js'
+import { isImportantDate } from './importantDays.js'
 
 const record = value => Boolean(value && typeof value === 'object' && !Array.isArray(value))
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
@@ -64,7 +65,7 @@ export function parseBackup(input) {
   for (const key of ['quoteMetadata', 'homeworkTemplates']) {
     if (own(content, key)) requireValue(record(content[key]), '内容')
   }
-  for (const day of content.importantDays || []) requireValue(record(day) && typeof day.name === 'string' && validDate(day.date), '重要日')
+  for (const day of content.importantDays || []) requireValue(record(day) && typeof day.name === 'string' && isImportantDate(day.date), '重要日')
   for (const lesson of content.schedule || []) {
     requireValue(record(lesson) && typeof lesson.subject === 'string' && Number.isInteger(lesson.weekday) && lesson.weekday >= 0 && lesson.weekday <= 6 && validTime(lesson.startAt) && validTime(lesson.endAt) && lessonTimeToSeconds(lesson.startAt) < lessonTimeToSeconds(lesson.endAt), '课程表')
     if (own(lesson, 'weeks')) requireValue(own(scheduleWeekTypes, lesson.weeks), '课程周次')

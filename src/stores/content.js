@@ -6,6 +6,7 @@ import { localDateStr, countOccurrences, isDateString, normalizeSlots, setStartu
 import { validCleaningPlans } from '../services/cleaning'
 import { sortMembersPinyin } from '../utils/dutyRoster'
 import { countNewScheduleLessons, mergeSchedule, normalizeScheduleLesson } from '../services/schedule'
+import { normalizeImportantDay, normalizeImportantDays } from '../services/importantDays'
 import quoteData from '../data/quotes.jsonc'
 
 const STORAGE_KEY = 'cytime.content.v1'
@@ -28,9 +29,7 @@ const defaultDuty = () => ({
 })
 
 const defaultContent = {
-  importantDays: [
-    { id: 'gaokao-2027', name: '2027 高考', date: '2027-06-07', recurring: false }
-  ],
+  importantDays: [],
   quotes: [...dailyQuotes],
   quoteMetadata: { ...quoteMetadata },
   flameJourneyQuotes: [...flameJourneyQuotes],
@@ -96,7 +95,7 @@ function readContent() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
     const universityMottos = defaultContent.universityMottos
     return {
-      importantDays: Array.isArray(saved.importantDays) ? saved.importantDays : [...defaultContent.importantDays],
+      importantDays: normalizeImportantDays(saved.importantDays),
       quotes: Array.isArray(saved.quotes) && saved.quotes.length ? saved.quotes : [...defaultContent.quotes],
       quoteMetadata: { ...defaultContent.quoteMetadata, ...(saved.quoteMetadata && typeof saved.quoteMetadata === 'object' ? saved.quoteMetadata : {}) },
       flameJourneyQuotes: Array.isArray(saved.flameJourneyQuotes) && saved.flameJourneyQuotes.length ? saved.flameJourneyQuotes : [...defaultContent.flameJourneyQuotes],
@@ -124,14 +123,27 @@ export const useContentStore = defineStore('content', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(content))
     persistDesktopValue(STORAGE_KEY, content).catch(() => {})
   })
-  function addImportantDay(name, date, recurring = false) {
-    if (!name || !date) return
-    content.importantDays.push({ id: id('day'), name, date, recurring })
+  function addImportantDay(draft) {
+    const day = normalizeImportantDay(draft)
+    if (!day) return false
+    content.importantDays.push({ id: id('day'), ...day })
     persist()
+    return true
   }
-  function removeImportantDay(item) {
-    content.importantDays = content.importantDays.filter(day => day.id !== item.id)
+  function updateImportantDay(id, draft) {
+    const day = content.importantDays.find(item => item.id === id)
+    const patch = normalizeImportantDay(draft)
+    if (!day || !patch) return false
+    Object.assign(day, patch)
     persist()
+    return true
+  }
+  function removeImportantDay(id) {
+    const index = content.importantDays.findIndex(day => day.id === id)
+    if (index === -1) return false
+    content.importantDays.splice(index, 1)
+    persist()
+    return true
   }
   function addQuote(value, metadata = {}) {
     const quote = String(typeof value === 'object' ? value?.text : value || '').trim()
@@ -462,5 +474,5 @@ export const useContentStore = defineStore('content', () => {
   }
 
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, importSchedule, setScheduleWeekOne, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, setFreezeUnstartedDays, updateDuty, saveCleaningPlans, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, setHomeworkSubjectPresets, saveHomeworkTemplate, clearHomeworkTemplate, updateNotepad }
+  return { content, addImportantDay, updateImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, importSchedule, setScheduleWeekOne, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, setFreezeUnstartedDays, updateDuty, saveCleaningPlans, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, setHomeworkSubjectPresets, saveHomeworkTemplate, clearHomeworkTemplate, updateNotepad }
 })

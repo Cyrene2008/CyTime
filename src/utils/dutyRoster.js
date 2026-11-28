@@ -92,6 +92,15 @@ function mappingChoice(rows, columns, firstData, sheetName, hint) {
   } }
 }
 
+function mappedHeaderColumn(rows, start, keys) {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].sourceRow >= start) continue
+    const column = findColumn(rows[i].map(normalizeHeader), keys)
+    if (column >= 0) return column
+  }
+  return -1
+}
+
 function rowsToMembers(all, listName, requireComplete, options = {}) {
   const rows = all.filter(row => row.some(value => String(value ?? '').trim()))
   if (!rows.length) throw new Error('名单内容为空')
@@ -118,7 +127,12 @@ function rowsToMembers(all, listName, requireComplete, options = {}) {
     if (![name, gender].every(n => Number.isInteger(n) && n >= 0) || name === gender ||
       (extra >= 0 && (extra === name || extra === gender)) || !Number.isInteger(start) || start < 1) throw new Error('请检查首行和所选列，每个用途需要不同的列')
     if (Boolean(mapping.male) !== Boolean(mapping.female) || (mapping.male && mapping.male === mapping.female)) throw new Error('自定义性别值需同时填写，且两者应不同')
-    columns = { ...columns, name, gender }
+    const mappedClass = mappedHeaderColumn(rows, start, LISTNAME_KEYS)
+    const classColumn = mappedClass >= 0 ? mappedClass : columns.listName
+    if (classColumn >= 0 && [name, gender].includes(classColumn)) throw new Error('姓名列和性别列不能使用已识别的班级列')
+    const englishColumn = mappedHeaderColumn(rows, start, EN_KEYS)
+    columns = { name, gender, listName: classColumn,
+      en: [name, gender, extra, classColumn].includes(englishColumn) ? -1 : englishColumn }
     dataRows = rows.filter(row => row.sourceRow >= start)
   } else if (requireComplete) {
     if (options.interactive && (duplicate || (!pairs && (nameIndex < 0 || genderIndex < 0)))) {
@@ -133,7 +147,7 @@ function rowsToMembers(all, listName, requireComplete, options = {}) {
     const people = dataRows.filter(row => row[columns.name] && !NAME_KEYS.includes(normalizeHeader(row[columns.name])))
     const classes = [...new Set(people.map(row => String(row[columns.listName] ?? '').trim()).filter(Boolean))]
     if (classes.length > 1) {
-      if (people.some(row => !String(row[columns.listName] ?? '').trim() && String(row[columns.gender] ?? '').trim())) {
+      if (people.some(row => !String(row[columns.listName] ?? '').trim())) {
         throw new Error('同一张表含多个班级，部分同学缺少班级名称，请补全')
       }
       if (options.className && classes.includes(options.className)) {

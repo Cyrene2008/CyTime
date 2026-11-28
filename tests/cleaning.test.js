@@ -171,6 +171,37 @@ test('inserting, replacing and cancelling a future change preserve history and r
   assert.deepEqual(earlier.map(p => p.start), ['2028-02-14'])
 })
 
+test('short transitions only check duties before the next effective plan', () => {
+  const fri = '2026-12-04', sat = '2026-12-05', sun = '2026-12-06'
+  const people = (men, women = []) => ({
+    members: [['male', men], ['female', women]].flatMap(([gender, names]) => names.map(name => ({ gender, name })))
+  })
+  const rules = (days, ...genders) => [{
+    title: '', days, time: '上午',
+    jobs: genders.map((gender, i) => ({ name: '岗位' + i, count: 1, gender }))
+  }]
+  const assigned = (plans, date) => cleaningSections(plans, date).flatMap(s => s.lines.flatMap(line => line.names))
+  for (const { initial, fridayRule, bridge, weekendRule, friday, saturday } of [
+    { initial: people(['A']), fridayRule: rules([5], 'any'), bridge: people(['A', 'B']),
+      weekendRule: rules([6, 0], 'any'), friday: ['A'], saturday: ['B'] },
+    { initial: people([], ['F']), fridayRule: rules([5], 'female'), bridge: people(['B', 'C'], ['F', 'G']),
+      weekendRule: rules([6, 0], 'female', 'any'), friday: ['F'], saturday: ['G', 'B'] }
+  ]) {
+    const history = updateCleaningPlans([], initial, fri, fridayRule)
+    const future = updateCleaningPlans(history, people(['D']), sun, rules([0], 'any'))
+    const plans = updateCleaningPlans(future, bridge, sat, weekendRule)
+    assert.ok(validCleaningPlans(plans))
+    assert.deepEqual(plans.map(p => p.start), [fri, sat, sun])
+    assert.deepEqual(assigned(plans, fri), friday)
+    assert.deepEqual(assigned(plans, sat), saturday)
+    assert.deepEqual(assigned(plans, sun), ['D'])
+    // Moving an identical later plan earlier removes that boundary, so Sunday
+    // really needs a second round of people who have rested long enough.
+    const identicalFuture = updateCleaningPlans(history, bridge, sun, weekendRule)
+    assert.throws(() => updateCleaningPlans(identicalFuture, bridge, sat, weekendRule), /2026-12-06.*交接/)
+  }
+})
+
 test('rejects backup queues that double-book a pupil at a boundary even if each roster is valid on its own', () => {
   const original = updateCleaningPlans([], roster(34, 0), '2026-12-03')
   const copied = { ...original[0], start: '2026-12-04' }
