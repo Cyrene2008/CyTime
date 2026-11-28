@@ -1,7 +1,7 @@
+import { validCleaningPlans } from './cleaning.js'
 import { migrateQuoteSettings } from './quoteEndpoints.js'
 
 import { lessonTimeToSeconds, scheduleWeekTypes } from './schedule.js'
-import { isImportantDate } from './importantDays.js'
 
 const record = value => Boolean(value && typeof value === 'object' && !Array.isArray(value))
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
@@ -64,7 +64,7 @@ export function parseBackup(input) {
   for (const key of ['quoteMetadata', 'homeworkTemplates']) {
     if (own(content, key)) requireValue(record(content[key]), '内容')
   }
-  for (const day of content.importantDays || []) requireValue(record(day) && typeof day.name === 'string' && isImportantDate(day.date), '重要日')
+  for (const day of content.importantDays || []) requireValue(record(day) && typeof day.name === 'string' && validDate(day.date), '重要日')
   for (const lesson of content.schedule || []) {
     requireValue(record(lesson) && typeof lesson.subject === 'string' && Number.isInteger(lesson.weekday) && lesson.weekday >= 0 && lesson.weekday <= 6 && validTime(lesson.startAt) && validTime(lesson.endAt) && lessonTimeToSeconds(lesson.startAt) < lessonTimeToSeconds(lesson.endAt), '课程表')
     if (own(lesson, 'weeks')) requireValue(own(scheduleWeekTypes, lesson.weeks), '课程周次')
@@ -82,6 +82,7 @@ export function parseBackup(input) {
     for (const key of ['members', 'rosters', 'schoolDays', 'activeDays', 'holidays']) {
       if (own(duty, key)) requireValue(Array.isArray(duty[key]), '值日名单')
     }
+    if (own(duty, 'cleaningPlans')) requireValue(validCleaningPlans(duty.cleaningPlans), '清洁排班')
     for (const member of duty.members || []) requireValue(record(member) && typeof member.id === 'string' && typeof member.name === 'string', '成员名单')
     for (const roster of duty.rosters || []) {
       requireValue(record(roster) && typeof roster.id === 'string' && typeof roster.name === 'string' && Array.isArray(roster.chores), '值日任务')
@@ -121,7 +122,11 @@ export function backupGroupDetail(group, backup) {
   const content = backup.content || {}
   if (group.id === 'settings') return '主题、显示与偏好'
   if (group.id === 'homework') return `${content.homework?.length || 0} 项作业 · ${content.homeworkHistory?.length || 0} 项历史`
-  if (group.id === 'duty') return `${content.duty?.members?.length || 0} 人 · ${content.duty?.rosters?.length || 0} 份名单`
+  if (group.id === 'duty') {
+    const plan = content.duty?.cleaningPlans?.at(-1)
+    const base = `${content.duty?.members?.length || 0} 人 · ${content.duty?.rosters?.length || 0} 份名单`
+    return plan ? `${base} · 清洁排班 ${plan.male.length + plan.female.length} 人` : base
+  }
   if (group.id === 'time') return `${backup.time?.countdowns?.length || 0} 个倒计时 · ${backup.time?.timers?.length || 0} 个计时器`
   if (group.id === 'notepad') return content.notepad ? '已保存笔记' : '空白笔记'
   if (group.id === 'quotes') return `${content.quotes?.length || 0} 条日常语录`

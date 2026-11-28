@@ -41,13 +41,15 @@ export default defineConfig({
       }
     }
   },
+  // Keep the lazily loaded roster worker self-contained for offline WebViews.
+  worker: { rollupOptions: { output: { inlineDynamicImports: true } } },
   plugins: [
     jsoncPlugin(),
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: null,
-      includeAssets: ['favicon.ico'],
+      includeAssets: ['favicon.svg'],
       manifest: {
         name: 'CyTime 昔时时钟',
         short_name: 'CyTime',
@@ -59,9 +61,8 @@ export default defineConfig({
         display: 'standalone',
         start_url: '/',
         icons: [
-          { src: '/favicon.ico', sizes: '16x16 24x24 32x32 48x48 64x64 256x256', type: 'image/x-icon' },
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
+          { src: '/icon-192.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any maskable' },
+          { src: '/icon-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
         ],
       },
       workbox: {

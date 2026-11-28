@@ -22,3 +22,12 @@ export function serializeDutyStats(roster, rows) {
     ...rows.map(row => [roster.name, row.member.name, row.total, Object.entries(row.chores).map(([name, count]) => `${name}×${count}`).join(' · ')])
   ])
 }
+
+export function serializeCleaningWeek(rows) {
+  const textCell = value => /^[=+@-]/.test(value) ? `'${value}` : value
+  return serializeCsv([['日期', '星期', '班次', '任务', '人员'], ...rows.flatMap(({ date, section }) =>
+    section.lines.map(line => {
+      const names = line.names.join('、')
+      return [date, weekdays[weekdayIndex(date)], textCell(section.roster.name), textCell(line.name), textCell(names)]
+    }))])
+}

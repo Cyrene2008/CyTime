@@ -3,9 +3,9 @@ import { defineStore } from 'pinia'
 import { persistDesktopValue } from '../services/desktop'
 import { createBatchedPersist } from '../services/persistence'
 import { localDateStr, countOccurrences, isDateString, normalizeSlots, setStartupRotationPolicy } from '../services/duty'
+import { validCleaningPlans } from '../services/cleaning'
 import { sortMembersPinyin } from '../utils/dutyRoster'
 import { countNewScheduleLessons, mergeSchedule, normalizeScheduleLesson } from '../services/schedule'
-import { normalizeImportantDay, normalizeImportantDays } from '../services/importantDays'
 import quoteData from '../data/quotes.jsonc'
 
 const STORAGE_KEY = 'cytime.content.v1'
@@ -14,6 +14,7 @@ const { dailyQuotes, flameJourneyQuotes, quoteMetadata, universityMottos } = quo
 
 const defaultDuty = () => ({
   members: [],
+  cleaningPlans: [],
   rosters: [],
   schoolDays: [],
   activeDays: [],
@@ -27,7 +28,9 @@ const defaultDuty = () => ({
 })
 
 const defaultContent = {
-  importantDays: [],
+  importantDays: [
+    { id: 'gaokao-2027', name: '2027 高考', date: '2027-06-07', recurring: false }
+  ],
   quotes: [...dailyQuotes],
   quoteMetadata: { ...quoteMetadata },
   flameJourneyQuotes: [...flameJourneyQuotes],
@@ -45,6 +48,7 @@ const defaultContent = {
 function normalizeDuty(saved) {
   const duty = { ...defaultDuty(), ...(saved && typeof saved === 'object' ? saved : {}) }
   if (!Array.isArray(duty.members)) duty.members = []
+  if (!validCleaningPlans(duty.cleaningPlans)) duty.cleaningPlans = []
   if (!Array.isArray(duty.rosters)) duty.rosters = []
   if (!Array.isArray(duty.schoolDays)) duty.schoolDays = []
   if (!Array.isArray(duty.activeDays)) duty.activeDays = []
@@ -92,7 +96,7 @@ function readContent() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
     const universityMottos = defaultContent.universityMottos
     return {
-      importantDays: normalizeImportantDays(saved.importantDays),
+      importantDays: Array.isArray(saved.importantDays) ? saved.importantDays : [...defaultContent.importantDays],
       quotes: Array.isArray(saved.quotes) && saved.quotes.length ? saved.quotes : [...defaultContent.quotes],
       quoteMetadata: { ...defaultContent.quoteMetadata, ...(saved.quoteMetadata && typeof saved.quoteMetadata === 'object' ? saved.quoteMetadata : {}) },
       flameJourneyQuotes: Array.isArray(saved.flameJourneyQuotes) && saved.flameJourneyQuotes.length ? saved.flameJourneyQuotes : [...defaultContent.flameJourneyQuotes],
@@ -120,27 +124,14 @@ export const useContentStore = defineStore('content', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(content))
     persistDesktopValue(STORAGE_KEY, content).catch(() => {})
   })
-  function addImportantDay(draft) {
-    const day = normalizeImportantDay(draft)
-    if (!day) return false
-    content.importantDays.push({ id: id('day'), ...day })
+  function addImportantDay(name, date, recurring = false) {
+    if (!name || !date) return
+    content.importantDays.push({ id: id('day'), name, date, recurring })
     persist()
-    return true
   }
-  function updateImportantDay(id, draft) {
-    const day = content.importantDays.find(item => item.id === id)
-    const patch = normalizeImportantDay(draft)
-    if (!day || !patch) return false
-    Object.assign(day, patch)
+  function removeImportantDay(item) {
+    content.importantDays = content.importantDays.filter(day => day.id !== item.id)
     persist()
-    return true
-  }
-  function removeImportantDay(id) {
-    const index = content.importantDays.findIndex(day => day.id === id)
-    if (index === -1) return false
-    content.importantDays.splice(index, 1)
-    persist()
-    return true
   }
   function addQuote(value, metadata = {}) {
     const quote = String(typeof value === 'object' ? value?.text : value || '').trim()
@@ -287,6 +278,27 @@ export const useContentStore = defineStore('content', () => {
   function setFreezeUnstartedDays(enabled) {
     setStartupRotationPolicy(content.duty, enabled)
     persist()
+  }
+  let savingCleaningPlans = false
+  async function saveCleaningPlans(cleaningPlans) {
+    if (savingCleaningPlans) throw new Error('正在保存上一份清洁名单，请稍后重试')
+    savingCleaningPlans = true
+    try {
+      // Publish the new rotation only after the browser and desktop have accepted it.
+      const updated = { ...content, duty: { ...content.duty, cleaningPlans } }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      try {
+        await persistDesktopValue(STORAGE_KEY, updated)
+      } catch (error) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(content))
+        throw error
+      }
+      content.duty.cleaningPlans = cleaningPlans
+    } catch {
+      throw new Error('清洁名单保存失败，原排班已保留。请检查设备存储后重试。')
+    } finally {
+      savingCleaningPlans = false
+    }
   }
   function updateDuty(patch) {
     Object.assign(content.duty, patch)
@@ -450,5 +462,5 @@ export const useContentStore = defineStore('content', () => {
   }
 
   watch(content, persist, { deep: true })
-  return { content, addImportantDay, updateImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, importSchedule, setScheduleWeekOne, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, setFreezeUnstartedDays, updateDuty, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, setHomeworkSubjectPresets, saveHomeworkTemplate, clearHomeworkTemplate, updateNotepad }
+  return { content, addImportantDay, removeImportantDay, addQuote, addQuotes, removeQuote, removeQuotes, addLesson, updateLesson, removeLesson, importSchedule, setScheduleWeekOne, addHomework, updateHomework, removeHomework, archivePastHomework, clearHomeworkHistory, restoreHomework, removeHistoryItems, recordSchoolDay, setFreezeUnstartedDays, updateDuty, saveCleaningPlans, addMember, updateMember, removeMember, importMembers, addRoster, updateRoster, removeRoster, addChore, updateChore, removeChore, setOverride, clearOverride, setRosterOffset, reanchorRoster, setRosterAnchor, clearRosterAnchor, setHomeworkSubjectPresets, saveHomeworkTemplate, clearHomeworkTemplate, updateNotepad }
 })
