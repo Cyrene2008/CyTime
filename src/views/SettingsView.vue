@@ -19,7 +19,7 @@ const DutySettingsPanel = defineAsyncComponent(() => import('../components/DutyS
 const BackupPanel = defineAsyncComponent(() => import('../components/BackupPanel.vue'))
 const ScheduleImportPanel = defineAsyncComponent(() => import('../components/ScheduleImportPanel.vue'))
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'preview-pointer'])
 const props = defineProps({ desktopAvailable: { type: Boolean, default: false }, initialPane: { type: String, default: '' } })
 const isDesktop = () => props.desktopAvailable || detectDesktop()
 const settingsStore = useSettingsStore()
@@ -180,6 +180,10 @@ function save() {
   toastRef.value?.add({ title: '设置已保存', duration: 2400 })
 }
 function cancel() { emit('close') }
+function togglePointerEffects() {
+  draft.swarmEffects = !draft.swarmEffects
+  emit('preview-pointer', draft.swarmEffects)
+}
 function addQuote() { const value = quoteDraft.value.trim(); if (!value) return; contentStore.addQuote(value); quoteDraft.value = ''; quotePage.value = quotePageCount.value }
 function openQuoteManager() { quoteManagerOpen.value = true; quotePage.value = 1; selectedQuotes.value = [] }
 function toggleAllPage() {
@@ -571,6 +575,17 @@ onBeforeUnmount(() => {
           </section>
           <section class="setting-card"><h3>主题</h3><div class="theme-options"><button type="button" class="theme-option dark-option" :class="{ selected: draft.theme === 'dark-peach' }" @click="draft.theme = 'dark-peach'"><i></i><span>深色桃粉</span></button><button type="button" class="theme-option light-option" :class="{ selected: draft.theme === 'light-peach' }" @click="draft.theme = 'light-peach'"><i></i><span>浅色桃粉</span></button></div><div class="appearance-fields"><label>数字字体<FluentSelect v-model="draft.fontFamily" :options="fontOptions" /></label><label>背景<FluentSelect v-model="draft.background" :options="backgroundOptions" /></label><label class="range-control">整体缩放 <strong>{{ draft.uiScale }}%</strong><input v-model.number="draft.uiScale" type="range" min="50" max="200" step="5" /></label></div><div class="accent-row"><label class="color-field"><span>主题色</span><FluentColorPicker v-model="draft.accentColor" :showPresets="false" /></label><button type="button" class="subtle-button" @click="draft.accentColor = ''">恢复默认主题色</button></div></section>
           <section class="setting-card setting-row"><div><h3>沉浸模式</h3><p>隐藏小组件边框，让页面更简洁。</p></div><button type="button" class="switch" :class="{ on: draft.immersiveMode }" :aria-pressed="draft.immersiveMode" @click="draft.immersiveMode = !draft.immersiveMode"><i></i></button></section>
+          <section class="setting-card">
+            <div class="setting-row">
+              <div><h3>指针特效</h3><p>内容区的普通箭头跟随主题色，文字和操作控件保留原有光标。用鼠标切到课堂工具首页时播放过场，按 Esc 可跳过。触屏和系统减少动态效果时保留原样。</p></div>
+              <button type="button" class="switch" role="switch" aria-label="指针特效" :class="{ on: draft.swarmEffects }" :aria-checked="draft.swarmEffects" @click="togglePointerEffects"><i></i></button>
+            </div>
+            <div class="setting-row">
+              <div><h3>绘制音效</h3><p>仅在指针特效播放时发声，不会单独启动特效。</p></div>
+              <button type="button" class="switch" role="switch" aria-label="绘制音效" :class="{ on: draft.swarmSound }" :aria-checked="draft.swarmSound" @click="draft.swarmSound = !draft.swarmSound"><i></i></button>
+            </div>
+            <div class="pointer-preview" data-swarm-preview><small>把鼠标移到这里的空白处预览</small></div>
+          </section>
         </template>
 
         <template v-else-if="activePane === 'layout'">
@@ -680,4 +695,6 @@ onBeforeUnmount(() => {
   .schedule-day-card .managed-item > span:first-child { min-width: 0; flex: 1 1 100%; flex-wrap: wrap; gap: 3px; white-space: normal; overflow-wrap: anywhere; }
   .schedule-day-card .managed-actions { margin-left: auto; }
 }
+.pointer-preview { display: flex; align-items: flex-end; min-height: 58px; margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--border-default); border-radius: 7px; color: var(--text-muted); background: var(--bg-card); }
+.pointer-preview small { font-size: 11px; }
 </style>

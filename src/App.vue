@@ -14,6 +14,7 @@ import { desktopWindowAction, getDesktopStartupArgs, initDesktopBridge, isDeskto
 import { homeworkManageOpen } from './composables/useHomeworkManage'
 import { installPopupFit } from './services/popupFit'
 import { dialogActivityKey } from './composables/useDialogActivity'
+import { useSwarmEffects } from './composables/useSwarmEffects'
 import HomeworkPanel from './components/HomeworkPanel.vue'
 import { fetchNetworkTime } from './services/timeSync'
 import { locateWeatherCity } from './services/weather'
@@ -46,6 +47,13 @@ const isClassroom = computed(() => route.meta.classroom === true)
 provide('cytimeStageActive', computed(() => !isSettings.value && !dialogActivity.value))
 const purePromptOpen = ref(false)
 const purePromptSeconds = ref(10)
+const pointerPreview = ref(null)
+watch(isSettings, open => { if (!open) pointerPreview.value = null }, { flush: 'sync' })
+useSwarmEffects(router, {
+  enabled: () => (pointerPreview.value ?? settingsStore.settings.swarmEffects) === true,
+  sound: () => settingsStore.settings.swarmSound === true,
+  suspended: () => isSettings.value || dialogActivity.value > 0 || settingsStore.examModeActive || desktopMini.value || isHomeworkWindow.value
+})
 const currentSecond = computed(() => Math.floor(timeStore.now / 1000))
 const currentDate = computed(() => new Date(currentSecond.value * 1000))
 const currentDay = computed(() => localDateStr(currentDate.value))
@@ -709,7 +717,7 @@ onUnmounted(() => {
   <div class="app-root" :class="{ 'is-desktop': desktopAvailable, 'titlebar-hidden': desktopAvailable && fullscreenActive }">
     <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" data-tauri-drag-region><span data-tauri-drag-region>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button v-if="!desktopMini" type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
     <div class="app-shell" ref="shellRef" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, 'classroom-route': isClassroom, 'with-compact-boards': compactClock, 'short-stage': stageHeight < 700, 'compact-footer': stageWidth <= 620, [`window-mode-${desktopWindowMode}`]: desktopAvailable }" :data-display-layout="displayLayout" :data-effective-layout="classroomLayout ? 'classroom' : 'desktop'" :style="{ '--stage-read-scale': stageReadScale }">
-    <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息">
+    <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息" data-swarm-persist>
       <div v-if="settingsStore.settings.showWeather" class="status-weather"><strong>{{ weatherTemperature }}°</strong><FluentIcon icon="weather-partly-cloudy-day-20-regular" :width="18" /><span>{{ weatherStatus }}</span></div>
       <div v-if="settingsStore.settings.showDayProgress" class="status-progress"><span>今日进度</span><div class="status-progress-bar"><i :style="{ width: `${progress}%` }"></i></div><strong>{{ progress.toFixed(0) }}%</strong></div>
       <button v-if="settingsStore.settings.showImportantDays" ref="importantDaysTrigger" type="button" class="important-days-trigger" :aria-label="importantDaysLabel" :title="importantDaysLabel" @click="openImportantDays">
@@ -719,13 +727,13 @@ onUnmounted(() => {
         <small v-else>{{ importantDays.past.length ? '暂无倒计时' : '未添加' }}</small>
       </button>
     </header>
-    <nav v-if="!isSettings" ref="navRef" class="mode-nav" aria-label="模式切换">
+    <nav v-if="!isSettings" ref="navRef" class="mode-nav" aria-label="模式切换" data-swarm-persist>
       <RouterLink v-for="item in visibleNavItems" :key="item.path" :to="item.path" :class="{ active: item.path === '/classroom' ? isClassroom : route.path === item.path }" :aria-current="item.path === '/classroom' && isClassroom ? 'page' : undefined"><FluentIcon :icon="item.icon" :width="17" /><span>{{ item.label }}</span></RouterLink>
     </nav>
-    <main class="clock-stage" :inert="isSettings"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><KeepAlive include="ClassroomView"><component :is="Component" /></KeepAlive></Transition></RouterView></main>
+    <main class="clock-stage" :inert="isSettings" data-swarm-pageview><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><KeepAlive include="ClassroomView"><component :is="Component" /></KeepAlive></Transition></RouterView></main>
     <template v-if="!isSettings">
       <footer class="clock-footer">
-        <button type="button" class="footer-action footer-settings" aria-label="设置" title="设置" @click="openSettings()"><FluentIcon icon="settings-20-regular" :width="19" /></button>
+        <button type="button" class="footer-action footer-settings" aria-label="设置" title="设置" data-swarm-persist @click="openSettings()"><FluentIcon icon="settings-20-regular" :width="19" /></button>
         <div class="footer-center-actions"><button type="button" class="footer-action" :aria-label="fullscreenActive ? '退出全屏' : '全屏'" @click="toggleFullscreen"><FluentIcon :icon="fullscreenActive ? 'full-screen-minimize-20-regular' : 'full-screen-maximize-20-regular'" :width="19" /><span>{{ fullscreenActive ? '退出全屏' : '全屏' }}</span></button><button type="button" class="footer-action" :aria-label="settingsStore.examModeActive ? '退出纯净模式' : '纯净/考试模式'" @click="settingsStore.examModeActive ? exitExamMode() : schedulePurePrompt()"><FluentIcon :icon="settingsStore.examModeActive ? 'eye-20-filled' : 'eye-off-20-regular'" :width="19" /><span>{{ settingsStore.examModeActive ? '退出纯净' : '纯净模式' }}</span></button></div>
       </footer>
       <div class="app-meta">
@@ -736,7 +744,7 @@ onUnmounted(() => {
       <Transition name="notice"><div v-if="taskNotice" class="task-notice" role="status" aria-live="assertive">{{ taskNotice }}</div></Transition>
       <Transition name="pure-prompt"><div v-if="purePromptOpen" class="pure-prompt-layer" role="dialog" aria-modal="false" aria-label="纯净模式提示"><div class="pure-prompt-card"><h2>进入纯净模式？</h2><p>天气、作业板和语录会暂时收起，只留下安静的时间画面，适合考试、自习或投屏。进入后可随时退出。</p><div class="pure-prompt-actions"><button type="button" class="subtle-button" @click="closePurePrompt">暂不进入 ({{ purePromptSeconds }}s)</button><button type="button" class="save-button" @click="enterExamMode">进入</button></div></div></div></Transition>
     </template>
-    <Transition name="settings-overlay"><div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" :initial-pane="settingsPane" @close="closeSettings" /></div></Transition>
+    <Transition name="settings-overlay"><div v-if="isSettings" class="settings-overlay"><div class="settings-scrim" @click="closeSettings"></div><SettingsView :desktop-available="desktopAvailable" :initial-pane="settingsPane" @preview-pointer="pointerPreview = $event" @close="closeSettings" /></div></Transition>
     <div v-if="homeworkManageOpen" class="homework-float-layer" role="dialog" aria-modal="true" aria-label="悬浮作业板">
       <HomeworkPanel manage-float @close="homeworkManageOpen = false" />
     </div>

@@ -9,6 +9,8 @@ const STORAGE_KEY = 'cytime.settings.v2'
 export const defaultSettings = {
   theme: 'dark-peach',
   accentColor: '',
+  swarmEffects: true,
+  swarmSound: false,
   startupMode: 'time',
   startupWindowMode: 'normal',
   idleReturnTime: false,
@@ -106,6 +108,8 @@ function readStoredSettings() {
     const saved = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
     const base = cloneSettings(defaultSettings)
     const merged = { ...base, ...migrateQuoteSettings(saved), quoteLocalSources: { ...base.quoteLocalSources, ...(saved.quoteLocalSources || {}) } }
+    if (typeof merged.swarmEffects !== 'boolean') merged.swarmEffects = base.swarmEffects
+    if (typeof merged.swarmSound !== 'boolean') merged.swarmSound = base.swarmSound
     if (merged.startupMode === 'clock') merged.startupMode = 'time'
     if (!['time', 'countdown', 'timer'].includes(merged.startupMode)) merged.startupMode = 'time'
     if (!['auto', 'desktop', 'classroom'].includes(merged.displayLayout)) merged.displayLayout = 'auto'

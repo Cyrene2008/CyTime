@@ -197,3 +197,4 @@ html[data-font="wengfaluosi"] .clock-view { --clock-unit: 19px; --clock-stretch:
 .short-stage .clock-view:not(.compact-boards) .hero-date-block { margin-top: 10px; }
 .exam-mode .clock-view:not(.compact-boards) { padding: 0 24px; }
 .exam-mode .clock-eyebrow { display: none; }
+:root { --cytime-swarm-accent: var(--accent); }
