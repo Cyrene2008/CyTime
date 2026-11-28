@@ -18,6 +18,7 @@ export interface SwarmCursorsRouteMeta {
         hud?: boolean;
         sound?: boolean;
         companion?: boolean;
+        drawScope?: SwarmCursorsDrawScope;
         autoReveal?: boolean;
         captureDelay?: number;
       };
@@ -42,6 +43,7 @@ export type SwarmCursorsPosition =
   | "bottom-center";
 
 export type SwarmCursorsTheme = "dark" | "light" | "pink";
+export type SwarmCursorsDrawScope = "viewport" | "scroll";
 
 export interface SwarmCursorsRouter {
   afterEach(callback: (...args: any[]) => any): (() => void) | void;
@@ -82,6 +84,10 @@ export interface SwarmCursorsOptions {
   companionMode?: "follow" | "replace";
   /** Hide the drawing cursors, leaving outlines and the companion cursor visible. Default: false. */
   hideWorkerPointers?: boolean;
+  /** Incorporate changes made by real controls into an unfinished drawing. Default: false. */
+  liveInteractions?: boolean;
+  /** Draw this viewport, or keep drawing as the visitor scrolls. Set autoReveal separately. Does not change explicit replay(). */
+  drawScope?: SwarmCursorsDrawScope;
   /** Fade back to the real page when the rebuild completes. Default: true (false when hud is true). */
   autoReveal?: boolean;
   /** Delay before the automatic reveal, in ms. Default: 1600. */

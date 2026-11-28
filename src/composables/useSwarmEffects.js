@@ -1,7 +1,6 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 export const swarmMotionQuery = '(pointer: fine) and (hover: hover) and (prefers-reduced-motion: no-preference) and (forced-colors: none)'
-const inputTarget = 'a, button, input, textarea, select, label, [contenteditable], [role="button"], [data-tauri-drag-region]'
 const accent = 'var(--cytime-swarm-accent)'
 const background = 'var(--bg-base)'
 
@@ -32,7 +31,7 @@ export function useSwarmEffects(router, { enabled, sound, hideWorkers, setChrome
 
   function onPointerDown(event) {
     lastPointerType = event.pointerType
-    if ((lastPointerType && lastPointerType !== 'mouse') || event.target.closest?.(inputTarget)) interrupt()
+    if (lastPointerType && lastPointerType !== 'mouse') interrupt()
   }
 
   function onClick(event) {
@@ -50,12 +49,9 @@ export function useSwarmEffects(router, { enabled, sound, hideWorkers, setChrome
   }
 
   function onKeyDown(event) {
-    if (['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return
-    interrupt()
-  }
-
-  function onFocus(event) {
-    if (event.target.matches?.('input, textarea, select, [contenteditable]')) interrupt()
+    // Preserve Esc to skip drawing without the engine consuming the event
+    // before it reaches an existing control or its native close behavior.
+    if (event.key === 'Escape') interrupt()
   }
 
   function updateSupport() {
@@ -147,6 +143,7 @@ export function useSwarmEffects(router, { enabled, sound, hideWorkers, setChrome
       colors: [accent, 'var(--accent-light)', 'var(--accent-200)'],
       hud: false,
       sound: false,
+      liveInteractions: true,
       companion: true,
       companionMode: 'replace',
       hideWorkerPointers: hideWorkers(),
@@ -207,7 +204,6 @@ export function useSwarmEffects(router, { enabled, sound, hideWorkers, setChrome
     window.addEventListener('pointerdown', onPointerDown, true)
     window.addEventListener('click', onClick, true)
     window.addEventListener('keydown', onKeyDown, true)
-    window.addEventListener('focusin', onFocus, true)
     window.addEventListener('resize', interrupt)
     document.addEventListener('visibilitychange', onVisibility)
     updateSupport()
@@ -218,7 +214,6 @@ export function useSwarmEffects(router, { enabled, sound, hideWorkers, setChrome
     window.removeEventListener('pointerdown', onPointerDown, true)
     window.removeEventListener('click', onClick, true)
     window.removeEventListener('keydown', onKeyDown, true)
-    window.removeEventListener('focusin', onFocus, true)
     window.removeEventListener('resize', interrupt)
     document.removeEventListener('visibilitychange', onVisibility)
   })

@@ -186,7 +186,6 @@ async function settleScene() {
   await waitFrame()
 }
 
-watch(overlayOpen, open => { if (open) swarm.interrupt() }, { flush: 'sync' })
 
 function syncViewport() {
   viewport.value = { width: window.innerWidth, height: window.innerHeight }

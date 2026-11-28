@@ -185,7 +185,7 @@ core.setPageEnabled(true)
 - `sound: false`：不播放合成音效
 - `companion: true`：默认 `companionMode: 'follow'` 在重建结束后显示跟随光标。1.4.0 的 `'replace'` 模式从进入启用页面起，就把普通区域的系统箭头换成主题色的无尾柄箭头；封面、绘制和完成后都保持，不再另画一枚跟随光标。文本选择、链接、控件和调整大小等操作保留原光标。禁用页面、关闭陪伴光标、触摸、减少动态效果或系统强制配色时不替换。
 - `autoReveal: true`：播放完成后自动 reveal，不需要手动点 Go live
-  - 隐藏 HUD 的自动模式只等待当前可见区域完成，不主动滚动页面；带 HUD 的手动模式仍可滚动重建整页。
+  - 默认情况下，隐藏 HUD 的自动模式只等待当前可见区域画完。长篇官网希望访客边滚边看，可以设置 `drawScope: 'scroll'`：第一屏画完会停下来等滚动；往下滚才解锁后面的内容，全部画完才自动恢复真实页面。短页不需要滚动，直接拖到页底也能正常收尾。
 - `cover: true`：路由切换时先用主题遮罩盖住新页面，引擎在遮罩后捕获，再开始画。这样不会“先看到完整的新页面，再被清空”，也不会让新页面内容消失
 
 某个页面想要操作栏，在页面源码里开：
@@ -202,6 +202,7 @@ definePageMeta({ swarmCursors: { hud: true, sound: true } })
 
 - `hud: true` 时，`autoReveal` 默认变成 `false`，操作栏会留在页面上
 - 也可以单独设置 `companion: false` 不显示陪伴光标
+- 全站和单页都可以选 `drawScope: 'scroll'` 或 `'viewport'`。前者不会为了采集内容自行滚动；依赖懒加载的页面需先准备好想画的内容。显式调用 `replay()` 仍按原来的整页回放方式执行。
 - `captureDelay` 可以按页面覆盖，给动态内容更多加载时间：
   `meta: { swarmCursors: { captureDelay: 3000 } }`
 
@@ -285,6 +286,10 @@ const { start, stop, toggle, running, loading, loaded, error } = useSwarmCursors
 
 ## 实时数字和指针样式
 
+对于有折叠菜单、手风琴或列表操作的页面，可以在安装插件时开启 `liveInteractions: true`。绘制尚未结束时，访客展开菜单会让新增内容加入当前绘制，收起则移除它；正文不从头再画。动画结束后继续使用真实界面，打开先前没画过的菜单也不会重新播放。
+
+持久导航应只标记始终可见的部分。例如，窄屏在固定的顶栏上标记 `data-swarm-persist`，把可开关的菜单面板留在绘制区域。按钮照常维护 `aria-expanded` 和 `aria-controls`，指针库不替应用执行点击。
+
 给单个数字或冒号的纯文本元素添加 `data-swarm-glyph`。画面会照常逐字绘制，字符出现后跟随原元素的文本更新；未绘制的字符不会提前露出。用稳定的 Vue key，保持每个元素只包含一个 ASCII 数字或冒号。给数字固定宽度可以避免随数字变化而移动。
 
 列表或结果区可能整体更新时，把 `data-swarm-live-region` 加在其稳定的容器上。结构或文本变化会立即把画面交还给真实页面，避免旧内容盖住新结果；该区域内已标记的单字符仍由 `data-swarm-glyph` 实时绘制。
@@ -330,6 +335,8 @@ div-pointers::part(worker-pointers) { display: none; }
 | `companionMode` | `'follow' \| 'replace'` | `'follow'` | 在鼠标旁边跟随，或用主题箭头替换网页普通区域的系统箭头 |
 | `hideWorkerPointers` | boolean | `false` | 隐藏绘制指针，保留描边、标记和用户指针 |
 | `autoReveal` | boolean | `true` | 播放完成后自动淡回真实页面；`hud: true` 时默认 false |
+| `drawScope` | `'viewport' \| 'scroll'` | 随 HUD 和 autoReveal | 画当前视口，或随访客滚动重建整页。两者都不主动滚动，是否自动退出由 autoReveal 决定 |
+| `liveInteractions` | boolean | `false` | 绘制中同步用户展开、收起或改变的内容，结束后不自动重播 |
 | `autoRevealDelay` | number | `1600` | 自动 reveal 延迟（ms） |
 | `captureDelay` | number | `0` | 遮罩后等待动态内容加载再捕获（ms） |
 | `cover` | boolean | `true` | 路由切换时显示主题遮罩，避免先显示完整新页面 |
