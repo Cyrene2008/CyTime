@@ -11,6 +11,7 @@ export const defaultSettings = {
   theme: 'dark-peach',
   accentColor: '',
   swarmEffects: true,
+  swarmHidePointers: true,
   swarmSound: false,
   swarmScope: 'global',
   swarmPages: normalizeSwarmPages(),
@@ -113,6 +114,7 @@ function readStoredSettings() {
     const base = cloneSettings(defaultSettings)
     const merged = { ...base, ...migrateQuoteSettings(saved), quoteLocalSources: { ...base.quoteLocalSources, ...(saved.quoteLocalSources || {}) } }
     if (typeof merged.swarmEffects !== 'boolean') merged.swarmEffects = base.swarmEffects
+    if (typeof merged.swarmHidePointers !== 'boolean') merged.swarmHidePointers = base.swarmHidePointers
     if (typeof merged.swarmSound !== 'boolean') merged.swarmSound = base.swarmSound
     if (merged.swarmScope !== 'selected') merged.swarmScope = 'global'
     merged.swarmPages = normalizeSwarmPages(merged.swarmPages)
@@ -138,6 +140,7 @@ export function applyTheme(settings) {
   root.dataset.font = settings.fontFamily
   root.dataset.background = settings.background
   root.dataset.immersive = settings.immersiveMode ? 'on' : 'off'
+  root.dataset.swarmHidePointers = settings.swarmHidePointers ? 'on' : 'off'
 
   // One accent → full Fluent ramp (same idea as VueFluentWidgets accentColor).
   const accent = (settings.accentColor || '').trim()

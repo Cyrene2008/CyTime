@@ -113,7 +113,7 @@ var mo=Object.defineProperty;var Yn=Object.getOwnPropertyDescriptor;var Kn=Objec
 <div class="intro"></div>
 <svg class="ov"></svg>
 <div class="badges"></div>
-<div class="cursors"></div>
+<div class="cursors" part="worker-pointers"></div>
 <div class="rulers"></div>
 <div class="hud">
   <button data-a="hidebar" class="hidebar" title="Hide the toolbar (${R}H)">${Mn}</button>

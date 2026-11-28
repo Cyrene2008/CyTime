@@ -4,7 +4,7 @@ This directory contains the distribution from `Cyrene2008/swarm-cursors-vue` 1.4
 
 The patch adds `core.replay({ sound, volume })`, which starts a fresh capture under the route cover. Replay sound defaults off and uses a gain of `0.1` when enabled; it does not change transition sound. The clock glyphs participate in reconstruction and read their displayed values from the original clock. The established `data-swarm-persist` marker still applies only to route-mode captures.
 
-The patch also preserves text size and wrapping when CyTime scales its layout for a larger display.
+The patch also preserves text size and wrapping when CyTime scales its layout for a larger display. The `worker-pointers` shadow part exposes only the decorative pointer layer, so CyTime can hide it independently of drawing guides and the user's cursor.
 
 To recreate the exact source, check out the pinned commit with LF line endings (`git -c core.autocrlf=false checkout 1cac10e8470f93d64cbabc4af7882cad1cf3f764` in a separate clone made with `--no-checkout`), then apply the patch:
 

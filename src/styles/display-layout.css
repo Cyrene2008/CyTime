@@ -203,6 +203,7 @@ html[data-font="wengfaluosi"] .clock-view { --clock-unit: 19px; --clock-stretch:
   opacity: 1;
 }
 .swarm-layout :is(.focus-dialog, .uri-help-modal, .pure-prompt-card) { animation: none !important; }
+html[data-swarm-hide-pointers="on"] div-pointers::part(worker-pointers) { display: none; }
 .cytime-launch-cover {
   position: fixed;
   z-index: 2147482999;

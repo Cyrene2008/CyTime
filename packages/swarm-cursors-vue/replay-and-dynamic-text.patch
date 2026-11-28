@@ -62,7 +62,7 @@ index fc7c451..08e9c32 100644
 @@ -895,0 +913 @@ export function createSwarmCursors(options) {
 +    replay,
 diff --git a/src/engine-runtime.js b/src/engine-runtime.js
-index accd924..0933551 100644
+index accd924..4fd5f9e 100644
 --- a/src/engine-runtime.js
 +++ b/src/engine-runtime.js
 @@ -660,0 +661,22 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
@@ -173,6 +173,9 @@ index accd924..0933551 100644
 @@ -1422 +1459 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
 -      if (it.kind !== "text" || it.copyOf || !it.text) continue;
 +      if (it.kind !== "text" || it.copyOf || it.glyph || !it.text) continue;
+@@ -1847 +1884 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-<div class="cursors"></div>
++<div class="cursors" part="worker-pointers"></div>
 @@ -2031,0 +2069,4 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
 +        if (it.glyph && it.units.length === 1 && it.units[0].t) {
 +          n.setAttribute("data-swarm-glyph", "");
@@ -233,7 +236,7 @@ index accd924..0933551 100644
 @@ -4623,0 +4690 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
 +        this.view.glyphObserver?.disconnect();
 diff --git a/types/index.d.ts b/types/index.d.ts
-index d8a7edf..6ffe473 100644
+index d8a7edf..940de80 100644
 --- a/types/index.d.ts
 +++ b/types/index.d.ts
 @@ -104,0 +105,7 @@ export interface SwarmCursorsOptions {
@@ -245,7 +248,7 @@ index d8a7edf..6ffe473 100644
 +}
 +
 @@ -109,0 +117,2 @@ export interface SwarmCursorsCore {
-+  /** Restart the current page under the cover, preserving live regions and route navigation. */
++  /** Rebuild the current page from scratch while keeping marked persistent navigation in place. */
 +  replay(options?: SwarmCursorsReplayOptions): Promise<void>;
 @@ -123,0 +133 @@ export interface UseSwarmCursorsReturn {
 +  replay: (options?: SwarmCursorsReplayOptions) => Promise<void>;

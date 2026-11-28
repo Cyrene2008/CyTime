@@ -114,7 +114,7 @@ export interface SwarmCursorsCore {
   getState(): SwarmCursorsState;
   getOptions(): Record<string, any>;
   start(): Promise<void>;
-  /** Restart the current page under the cover, preserving live regions and route navigation. */
+  /** Rebuild the current page from scratch while keeping marked persistent navigation in place. */
   replay(options?: SwarmCursorsReplayOptions): Promise<void>;
   stop(reveal?: boolean): void;
   toggle(): void;

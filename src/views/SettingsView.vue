@@ -631,6 +631,10 @@ onBeforeUnmount(() => {
               <button type="button" class="switch" role="switch" aria-label="指针特效" :class="{ on: draft.swarmEffects }" :aria-checked="draft.swarmEffects" @click="togglePointerEffects"><i></i></button>
             </div>
             <div class="setting-row">
+              <div><h3>隐藏指针</h3><p>减少屏幕上跑动的指针。你的光标、绘制过程和描边框仍会显示。</p></div>
+              <button type="button" class="switch" role="switch" aria-label="隐藏指针" :class="{ on: draft.swarmHidePointers }" :aria-checked="draft.swarmHidePointers" @click="draft.swarmHidePointers = !draft.swarmHidePointers"><i></i></button>
+            </div>
+            <div class="setting-row">
               <div><h3>绘制音效</h3><p>仅在指针特效播放时发声，不会单独启动特效。</p></div>
               <button type="button" class="switch" role="switch" aria-label="绘制音效" :class="{ on: draft.swarmSound }" :aria-checked="draft.swarmSound" @click="draft.swarmSound = !draft.swarmSound"><i></i></button>
             </div>
