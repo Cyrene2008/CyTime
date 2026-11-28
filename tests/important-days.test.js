@@ -66,3 +66,9 @@ test('backup restore preserves recurrence and pin flags and legacy records recei
   assert.equal(normalized[0].pinned, false)
   assert.throws(() => parseBackup({ content: { importantDays: [{ ...oldDay, date: '2026-11-31' }] } }), /重要日/)
 })
+
+test('backups accept the same four-digit calendar dates as the important-day editor', () => {
+  const day = { name: '纪念日', date: '0099-02-28', recurring: true, pinned: false }
+  assert.deepEqual(normalizeImportantDay(day), day)
+  assert.deepEqual(parseBackup({ content: { importantDays: [day] } }).content.importantDays, [day])
+})

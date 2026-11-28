@@ -1,32 +1,7 @@
-export function localDateStr(date = new Date()) {
-  const year = String(date.getFullYear()).padStart(4, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
+import { dateAdd, isDateString, localDateStr, parseDate, weekdayIndex } from '../utils/dutyDate.js'
+import { nextCleaningDate, cleaningSections } from './cleaning.js'
 
-function parseDate(dateStr) {
-  if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null
-  const [year, month, day] = dateStr.split('-').map(Number)
-  const date = new Date(0)
-  date.setFullYear(year, month - 1, day)
-  date.setHours(0, 0, 0, 0)
-  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null
-}
-
-export function isDateString(dateStr) { return Boolean(parseDate(dateStr)) }
-
-export function weekdayIndex(dateStr) {
-  return parseDate(dateStr)?.getDay() ?? -1
-}
-
-export function dateAdd(dateStr, delta) {
-  const date = parseDate(dateStr)
-  if (!date || !Number.isFinite(Number(delta))) return null
-  date.setDate(date.getDate() + Math.trunc(Number(delta)))
-  const result = localDateStr(date)
-  return isDateString(result) ? result : null
-}
+export { dateAdd, isDateString, localDateStr, weekdayIndex }
 
 function mod(value, divisor) {
   if (!divisor) return 0
@@ -192,7 +167,7 @@ export function setStartupRotationPolicy(duty, enabled, date = localDateStr()) {
 }
 
 export function applicableDate(duty, dateStr, today = localDateStr()) {
-  return (duty.rosters || []).some(roster => rosterApplies(duty, roster, dateStr, today))
+  return cleaningSections(duty.cleaningPlans, dateStr).length > 0 || (duty.rosters || []).some(roster => rosterApplies(duty, roster, dateStr, today))
 }
 
 export function nextRosterDate(duty, roster, from, direction, today = localDateStr()) {
@@ -213,7 +188,10 @@ export function nextRosterDate(duty, roster, from, direction, today = localDateS
 }
 
 export function nextDutyDate(duty, from, direction, today = localDateStr()) {
-  const dates = (duty.rosters || []).map(roster => nextRosterDate(duty, roster, from, direction, today)).filter(Boolean).sort()
+  const dates = (duty.rosters || []).map(roster => nextRosterDate(duty, roster, from, direction, today)).filter(Boolean)
+  const cleaning = nextCleaningDate(duty.cleaningPlans, from, direction)
+  if (cleaning) dates.push(cleaning)
+  dates.sort()
   return (direction < 0 ? dates.at(-1) : dates[0]) || null
 }
 
@@ -266,9 +244,10 @@ export function resolveRosterDay(duty, roster, dateStr, today = localDateStr(), 
 }
 
 export function resolveDay(duty, dateStr, today = localDateStr()) {
-  return (duty.rosters || [])
+  const sections = (duty.rosters || [])
     .filter(roster => rosterApplies(duty, roster, dateStr, today))
     .map(roster => ({ roster, ...resolveRosterDay(duty, roster, dateStr, today) }))
+  return [...cleaningSections(duty.cleaningPlans, dateStr), ...sections]
 }
 
 export function dutyStats(duty, roster, from, to = localDateStr()) {

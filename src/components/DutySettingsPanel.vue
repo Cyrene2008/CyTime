@@ -1,5 +1,6 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
+import CleaningSettingsPanel from './CleaningSettingsPanel.vue'
 import { useContentStore } from '../stores/content'
 import { localDateStr, dateAdd, isDateString, countOccurrences, occurrenceIndex, createOccurrenceResolver, nextRosterDate, resolveRosterDay, rosterApplies, dutyStats } from '../services/duty'
 import { parseRosterFile, serializeRosterFile } from '../utils/dutyRoster'
@@ -15,6 +16,7 @@ const membersById = computed(() => new Map(duty.value.members.map(member => [mem
 
 const tabs = [
   { value: 'members', label: '成员名单' },
+  { value: 'cleaning', label: '清洁排班' },
   { value: 'rosters', label: '名单与任务' },
   { value: 'preview', label: '排班与单日调整' },
   { value: 'stats', label: '次数统计' }
@@ -344,7 +346,7 @@ async function exportStats() {
 </script>
 
 <template>
-  <div class="settings-tabs">
+  <div class="settings-tabs duty-tabs">
     <button v-for="item in tabs" :key="item.value" type="button" :class="{ active: tab === item.value }" @click="tab = item.value">{{ item.label }}</button>
   </div>
 
@@ -382,6 +384,8 @@ async function exportStats() {
       <p v-if="!duty.members.length" class="empty-inline">还没有成员，请导入名单文件或手动添加。</p>
     </div>
   </section>
+
+  <CleaningSettingsPanel v-else-if="tab === 'cleaning'" />
 
   <section v-else-if="tab === 'rosters'" class="setting-card">
     <div class="card-toolbar">
@@ -594,3 +598,8 @@ async function exportStats() {
     <p v-else class="empty-inline">暂无次数记录。</p>
   </section>
 </template>
+
+<style scoped>
+.duty-tabs { overflow-x: auto; }
+.duty-tabs > button { flex: 0 0 auto; white-space: nowrap; }
+</style>

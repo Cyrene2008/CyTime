@@ -1,4 +1,4 @@
-export function parseCsvRows(input) {
+export function parseCsvRows(input, delimiter = ',', keepBlank = false) {
   const content = String(input || '').replace(/^\uFEFF/, '')
   const rows = []
   let row = []
@@ -11,18 +11,18 @@ export function parseCsvRows(input) {
       else if (character === '"') quoted = false
       else cell += character
     } else if (character === '"') quoted = true
-    else if (character === ',') { row.push(cell); cell = '' }
+    else if (character === delimiter) { row.push(cell); cell = '' }
     else if (character === '\n' || character === '\r') {
       if (character === '\r' && content[index + 1] === '\n') index++
       row.push(cell)
-      if (row.some(value => value.trim() !== '')) rows.push(row)
+      if (keepBlank || row.some(value => value.trim() !== '')) rows.push(row)
       row = []
       cell = ''
     } else cell += character
   }
   if (quoted) throw new Error('CSV 引号未闭合')
   row.push(cell)
-  if (row.some(value => value.trim() !== '')) rows.push(row)
+  if (keepBlank || row.some(value => value.trim() !== '')) rows.push(row)
   return rows
 }
 

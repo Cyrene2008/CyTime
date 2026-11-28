@@ -51,7 +51,12 @@ async function readBackup(event) {
     fileName.value = file.name
     selected.value = availableBackupGroups(parsed).map(group => group.id)
     message.value = ''
-  } catch (error) { message.value = error?.message || '无法读取备份' }
+  } catch (error) {
+    backup.value = null
+    fileName.value = ''
+    selected.value = []
+    message.value = error?.message || '无法读取备份'
+  }
   finally { event.target.value = '' }
 }
 async function restoreBackup() {
