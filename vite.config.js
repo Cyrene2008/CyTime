@@ -41,6 +41,8 @@ export default defineConfig({
       }
     }
   },
+  // Keep the lazily loaded roster worker self-contained for offline WebViews.
+  worker: { rollupOptions: { output: { inlineDynamicImports: true } } },
   plugins: [
     jsoncPlugin(),
     vue(),

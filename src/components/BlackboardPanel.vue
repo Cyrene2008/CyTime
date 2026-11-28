@@ -20,7 +20,7 @@ const displayDate = computed(() => pinnedDate.value || realToday.value)
 const atToday = computed(() => !pinnedDate.value || pinnedDate.value === realToday.value)
 
 const sections = computed(() => resolveDay(duty.value, displayDate.value))
-const hasRoster = computed(() => duty.value.rosters.length > 0)
+const hasRoster = computed(() => duty.value.rosters.length > 0 || Boolean(duty.value.cleaningPlans?.length))
 const hasPrev = computed(() => Boolean(nextDutyDate(duty.value, displayDate.value, -1)))
 const hasNext = computed(() => Boolean(nextDutyDate(duty.value, displayDate.value, 1)))
 
@@ -28,6 +28,7 @@ function memberName(memberId) {
   return duty.value.members.find(member => member.id === memberId)?.name || '—'
 }
 function lineNames(line) {
+  if (line.names) return line.names.join('、')
   return line.memberIds.length ? line.memberIds.map(memberName).join('、') : '待指定'
 }
 
@@ -175,7 +176,7 @@ onUnmounted(() => {
     <div class="blackboard-body">
       <template v-if="sections.length">
         <section v-for="section in sections" :key="section.roster.id" class="blackboard-roster">
-          <div class="blackboard-roster-head"><strong>{{ section.roster.name }}</strong><small v-if="section.roster.mode === 'manual'">手动指定</small><small v-else>第 {{ section.occurrence + 1 }} 次</small></div>
+          <div class="blackboard-roster-head"><strong>{{ section.roster.name }}</strong><small v-if="section.roster.mode === 'cleaning'">清洁排班</small><small v-else-if="section.roster.mode === 'manual'">手动指定</small><small v-else>第 {{ section.occurrence + 1 }} 次</small></div>
           <template v-if="section.roster.mode === 'manual'">
             <button v-for="line in section.lines" :key="line.choreId" type="button" class="blackboard-line blackboard-line-edit" :class="{ modified: line.overridden }" @click="openLineEditor(section, line)">
               <span class="blackboard-chore">{{ line.name }}<em v-if="line.overridden">调</em></span>

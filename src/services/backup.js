@@ -1,3 +1,4 @@
+import { validCleaningPlans } from './cleaning.js'
 import { migrateQuoteSettings } from './quoteEndpoints.js'
 
 import { lessonTimeToSeconds, scheduleWeekTypes } from './schedule.js'
@@ -82,6 +83,7 @@ export function parseBackup(input) {
     for (const key of ['members', 'rosters', 'schoolDays', 'activeDays', 'holidays']) {
       if (own(duty, key)) requireValue(Array.isArray(duty[key]), '值日名单')
     }
+    if (own(duty, 'cleaningPlans')) requireValue(validCleaningPlans(duty.cleaningPlans), '清洁排班')
     for (const member of duty.members || []) requireValue(record(member) && typeof member.id === 'string' && typeof member.name === 'string', '成员名单')
     for (const roster of duty.rosters || []) {
       requireValue(record(roster) && typeof roster.id === 'string' && typeof roster.name === 'string' && Array.isArray(roster.chores), '值日任务')
@@ -121,7 +123,11 @@ export function backupGroupDetail(group, backup) {
   const content = backup.content || {}
   if (group.id === 'settings') return '主题、显示与偏好'
   if (group.id === 'homework') return `${content.homework?.length || 0} 项作业 · ${content.homeworkHistory?.length || 0} 项历史`
-  if (group.id === 'duty') return `${content.duty?.members?.length || 0} 人 · ${content.duty?.rosters?.length || 0} 份名单`
+  if (group.id === 'duty') {
+    const plan = content.duty?.cleaningPlans?.at(-1)
+    const base = `${content.duty?.members?.length || 0} 人 · ${content.duty?.rosters?.length || 0} 份名单`
+    return plan ? `${base} · 清洁排班 ${plan.male.length + plan.female.length} 人` : base
+  }
   if (group.id === 'time') return `${backup.time?.countdowns?.length || 0} 个倒计时 · ${backup.time?.timers?.length || 0} 个计时器`
   if (group.id === 'notepad') return content.notepad ? '已保存笔记' : '空白笔记'
   if (group.id === 'quotes') return `${content.quotes?.length || 0} 条日常语录`
