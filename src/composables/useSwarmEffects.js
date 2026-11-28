@@ -14,7 +14,7 @@ export function useSwarmEffects(router, { enabled, sound, suspended, allowsRoute
   let pending
   let connecting = Promise.resolve()
   let limitTimer
-  let input = 'mouse'
+  let lastPointerType
   let routeClick
 
   function clearRun() {
@@ -31,12 +31,15 @@ export function useSwarmEffects(router, { enabled, sound, suspended, allowsRoute
   }
 
   function onPointerDown(event) {
-    input = event.pointerType || 'mouse'
-    if (input !== 'mouse' || event.target.closest?.(inputTarget)) interrupt()
+    lastPointerType = event.pointerType
+    if ((lastPointerType && lastPointerType !== 'mouse') || event.target.closest?.(inputTarget)) interrupt()
   }
 
   function onClick(event) {
-    if (input !== 'mouse' || event.detail < 1 || event.button !== 0 || event.defaultPrevented
+    // Keyboard and accessibility tools can activate a link without a pointer press.
+    const pointerType = event.pointerType || (event.detail > 0 ? lastPointerType : undefined)
+    if ((pointerType && pointerType !== 'mouse') || event.sourceCapabilities?.firesTouchEvents
+      || event.button !== 0 || event.defaultPrevented
       || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
     const link = event.target.closest?.('.app-shell a[href]')
     if (!link || link.hasAttribute('download') || (link.target && link.target.toLowerCase() !== '_self')) return
@@ -48,7 +51,6 @@ export function useSwarmEffects(router, { enabled, sound, suspended, allowsRoute
 
   function onKeyDown(event) {
     if (['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return
-    input = 'keyboard'
     interrupt()
   }
 
@@ -64,8 +66,8 @@ export function useSwarmEffects(router, { enabled, sound, suspended, allowsRoute
     if (document.hidden) interrupt()
   }
 
-  function canPlay(mouseOnly = false) {
-    return enabled() && supported.value && !suspended() && !document.hidden && (!mouseOnly || input === 'mouse')
+  function canPlay() {
+    return enabled() && supported.value && !suspended() && !document.hidden
   }
 
   function updateArrow() {
@@ -95,7 +97,7 @@ export function useSwarmEffects(router, { enabled, sound, suspended, allowsRoute
       const click = routeClick
       routeClick = null
       pending = to
-      active.value = canPlay(true) && from.matched.length > 0 && from.fullPath !== to.fullPath
+      active.value = canPlay() && from.matched.length > 0 && from.fullPath !== to.fullPath
         && allowsRoute(to)
         && click?.href === new URL(router.resolve(to).href, window.location.href).href
       to.meta.swarmCursors = active.value ? { sound: sound() } : false
@@ -108,7 +110,7 @@ export function useSwarmEffects(router, { enabled, sound, suspended, allowsRoute
         clearRun()
       }
       if (failure || !to.meta.swarmCursors) return
-      if (!canPlay(true) || !allowsRoute(to)) interrupt()
+      if (!canPlay() || !allowsRoute(to)) interrupt()
     })
     const onError = router.onError((_error, to) => {
       if (pending !== to) return
