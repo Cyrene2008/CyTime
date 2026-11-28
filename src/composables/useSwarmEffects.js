@@ -5,7 +5,7 @@ const inputTarget = 'a, button, input, textarea, select, label, [contenteditable
 const accent = 'var(--cytime-swarm-accent)'
 const background = 'var(--bg-base)'
 
-export function useSwarmEffects(router, { enabled, sound, hideWorkers, suspended, allowsRoute, allowsSurface }) {
+export function useSwarmEffects(router, { enabled, sound, hideWorkers, setChromePersistent, suspended, allowsRoute, allowsSurface }) {
   const supported = ref(false)
   const active = ref(false)
   let preference
@@ -80,6 +80,8 @@ export function useSwarmEffects(router, { enabled, sound, hideWorkers, suspended
     interrupt()
     const instance = core
     instance.setPageEnabled(true)
+    // Startup and explicit URI replay rebuild the full scene.
+    setChromePersistent(false)
     active.value = true
     limitTimer = window.setTimeout(interrupt, 5500)
     instance.replay({ sound: sounds ?? sound(), volume }).catch(() => {
@@ -102,7 +104,10 @@ export function useSwarmEffects(router, { enabled, sound, hideWorkers, suspended
         && click?.href === new URL(router.resolve(to).href, window.location.href).href
       to.meta.swarmCursors = active.value ? { sound: sound() } : false
       // The cover opens before lazy routes finish resolving.
-      if (active.value) limitTimer = window.setTimeout(interrupt, 5500)
+      if (active.value) {
+        setChromePersistent(true)
+        limitTimer = window.setTimeout(interrupt, 5500)
+      }
     })
     const after = router.afterEach((to, _from, failure) => {
       if (failure && pending === to) {

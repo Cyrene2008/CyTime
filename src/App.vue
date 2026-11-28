@@ -50,6 +50,14 @@ provide('cytimeStageActive', computed(() => !isSettings.value && !dialogActivity
 const purePromptOpen = ref(false)
 const purePromptSeconds = ref(10)
 const pointerPreview = ref(null)
+const statusDockRef = ref(null)
+const navRef = ref(null)
+const preserveSwarmChrome = ref(false)
+function setSwarmChromePersistent(preserve) {
+  preserveSwarmChrome.value = preserve
+  // The cover measures the live regions in the same router guard, before Vue renders.
+  for (const element of [statusDockRef.value, navRef.value]) element?.toggleAttribute('data-swarm-persist', preserve)
+}
 const effectsAllowed = (surface) => allowsSwarmSurface(settingsStore.settings, surface, settingsStore.examModeActive)
 const currentSurfaceAllows = () => isSettings.value && pointerPreview.value !== null
   ? pointerPreview.value && (!settingsStore.examModeActive || !settingsStore.settings.swarmDisablePure)
@@ -66,6 +74,7 @@ const swarm = useSwarmEffects(router, {
   enabled: () => (pointerPreview.value ?? settingsStore.settings.swarmEffects) === true,
   sound: () => settingsStore.settings.swarmSound === true,
   hideWorkers: () => settingsStore.settings.swarmHidePointers === true,
+  setChromePersistent: setSwarmChromePersistent,
   suspended: () => launchSettling.value || isHomeworkWindow.value,
   allowsRoute: candidate => !modalOpen.value && effectsAllowed(candidate.meta.swarmSurface),
   allowsSurface: currentSurfaceAllows
@@ -101,8 +110,6 @@ const taskNotice = ref('')
 const taskDock = ref(null)
 const taskOverflow = ref(false)
 const shellRef = ref(null)
-const statusDockRef = ref(null)
-const navRef = ref(null)
 let weatherTimer
 let controlsTimer
 let noticeTimer
@@ -136,6 +143,7 @@ const navItems = [
   { path: '/classroom', label: '课堂工具', icon: 'apps-20-regular' }
 ]
 const visibleNavItems = computed(() => desktopMini.value && !isClassroom.value ? navItems.filter(item => item.path !== '/classroom') : navItems)
+const isNavActive = path => path === '/classroom' ? isClassroom.value : route.path === path
 const activeTaskCount = computed(() => timeStore.activeCountdowns.length + timeStore.activeTimers.length)
 const viewport = ref({ width: window.innerWidth, height: window.innerHeight })
 const uiScale = computed(() => Math.max(.5, Math.min(2, Number(settingsStore.settings.uiScale) / 100 || 1)))
@@ -811,7 +819,7 @@ onUnmounted(() => {
   <div class="app-root" :class="{ 'swarm-layout': swarmLayout, 'is-desktop': desktopAvailable, 'titlebar-hidden': desktopAvailable && fullscreenActive }">
     <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" data-tauri-drag-region><span data-tauri-drag-region>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button v-if="!desktopMini" type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
     <div class="app-shell" ref="shellRef" :inert="launchSettling" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, 'classroom-route': isClassroom, 'with-compact-boards': compactClock, 'short-stage': stageHeight < 700, 'compact-footer': stageWidth <= 620, [`window-mode-${desktopWindowMode}`]: desktopAvailable }" :data-display-layout="displayLayout" :data-effective-layout="classroomLayout ? 'classroom' : 'desktop'" :style="{ '--stage-read-scale': stageReadScale }">
-    <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息">
+    <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息" :data-swarm-persist="preserveSwarmChrome ? '' : null">
       <div v-if="settingsStore.settings.showWeather" class="status-weather"><strong>{{ weatherTemperature }}°</strong><FluentIcon icon="weather-partly-cloudy-day-20-regular" :width="18" /><span>{{ weatherStatus }}</span></div>
       <div v-if="settingsStore.settings.showDayProgress" class="status-progress"><span>今日进度</span><div class="status-progress-bar"><i :style="{ width: `${progress}%` }"></i></div><strong>{{ progress.toFixed(0) }}%</strong></div>
       <button v-if="settingsStore.settings.showImportantDays" ref="importantDaysTrigger" type="button" class="important-days-trigger" :aria-label="importantDaysLabel" :title="importantDaysLabel" @click="openImportantDays">
@@ -821,8 +829,8 @@ onUnmounted(() => {
         <small v-else>{{ importantDays.past.length ? '暂无倒计时' : '未添加' }}</small>
       </button>
     </header>
-    <nav v-if="!isSettings" ref="navRef" class="mode-nav" aria-label="模式切换">
-      <RouterLink v-for="item in visibleNavItems" :key="item.path" :to="item.path" :class="{ active: item.path === '/classroom' ? isClassroom : route.path === item.path }" :aria-current="item.path === '/classroom' && isClassroom ? 'page' : undefined"><FluentIcon :icon="item.icon" :width="17" /><span>{{ item.label }}</span></RouterLink>
+    <nav v-if="!isSettings" ref="navRef" class="mode-nav" aria-label="模式切换" :data-swarm-persist="preserveSwarmChrome ? '' : null">
+      <RouterLink v-for="item in visibleNavItems" :key="item.path" :to="item.path" :class="{ active: isNavActive(item.path) }" :aria-current="isNavActive(item.path) ? 'page' : undefined"><FluentIcon :icon="item.icon" :width="17" /><span>{{ item.label }}</span></RouterLink>
     </nav>
     <main class="clock-stage" :inert="isSettings" data-swarm-pageview><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><KeepAlive include="ClassroomView"><component :is="Component" /></KeepAlive></Transition></RouterView></main>
     <template v-if="!isSettings">
