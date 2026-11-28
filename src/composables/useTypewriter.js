@@ -2,13 +2,14 @@ import { onUnmounted, ref, watch } from 'vue'
 
 export function useTypewriter(source, options = {}) {
   const displayed = ref('')
+  const displayedAttribution = ref('')
   const isTyping = ref(false)
   let timer
   let generation = 0
   let target = ''
   let phase = 'type'
 
-  watch([source, () => options.animation?.(), () => options.typeSpeed?.(), () => options.active?.() ?? true], ([value, , , active]) => {
+  watch([source, () => options.attribution?.(), () => options.animation?.(), () => options.typeSpeed?.(), () => options.active?.() ?? true], ([value, attribution, , , active]) => {
     const nextTarget = String(value || '')
     if (nextTarget !== target) {
       target = nextTarget
@@ -23,11 +24,17 @@ export function useTypewriter(source, options = {}) {
     const eraseSpeed = Math.max(12, Math.round(typeSpeed * 0.55))
     if (animation !== 'typewriter') {
       displayed.value = target
+      displayedAttribution.value = target ? attribution || '' : ''
       isTyping.value = false
       return
     }
     // 弹层打开时保留已显示的字和当前阶段，恢复后接着播放。
-    if (!active || displayed.value === target) { isTyping.value = false; return }
+    if (!active) { isTyping.value = false; return }
+    if (displayed.value === target) {
+      displayedAttribution.value = target ? attribution || '' : ''
+      isTyping.value = false
+      return
+    }
 
     isTyping.value = true
 
@@ -35,11 +42,13 @@ export function useTypewriter(source, options = {}) {
       if (currentGeneration !== generation) return
       if (phase === 'erase' && displayed.value.length) {
         displayed.value = displayed.value.slice(0, -1)
+        if (!displayed.value) displayedAttribution.value = ''
         timer = window.setTimeout(step, eraseSpeed)
         return
       }
       phase = 'type'
       if (displayed.value.length < target.length) {
+        displayedAttribution.value = attribution || ''
         displayed.value = target.slice(0, displayed.value.length + 1)
         timer = window.setTimeout(step, typeSpeed)
       } else isTyping.value = false
@@ -51,5 +60,5 @@ export function useTypewriter(source, options = {}) {
     window.clearTimeout(timer)
     isTyping.value = false
   })
-  return { value: displayed, isTyping }
+  return { value: displayed, attribution: displayedAttribution, isTyping }
 }

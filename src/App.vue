@@ -56,8 +56,7 @@ const currentSurfaceAllows = () => isSettings.value && pointerPreview.value !== 
   : effectsAllowed(isSettings.value ? 'settings' : route.meta.swarmSurface)
 const bootCurtain = ref(props.desktopLaunch || (settingsStore.settings.swarmEffects && currentSurfaceAllows() && window.matchMedia(swarmMotionQuery).matches))
 const launchSettling = ref(props.desktopLaunch)
-const scenePreparing = ref(false)
-let sceneRevision = 0
+const overlayOpen = computed(() => isSettings.value || !!dialogActivity.value || purePromptOpen.value)
 let launchController
 let nativePreparation = Promise.resolve()
 let disposed = false
@@ -66,10 +65,10 @@ const swarm = useSwarmEffects(router, {
   enabled: () => (pointerPreview.value ?? settingsStore.settings.swarmEffects) === true,
   sound: () => settingsStore.settings.swarmSound === true,
   suspended: () => launchSettling.value || isHomeworkWindow.value,
-  allowsRoute: candidate => !isSettings.value && effectsAllowed(candidate.meta.swarmSurface),
+  allowsRoute: candidate => !overlayOpen.value && effectsAllowed(candidate.meta.swarmSurface),
   allowsSurface: currentSurfaceAllows
 })
-const swarmLayout = computed(() => bootCurtain.value || scenePreparing.value || swarm.active.value)
+const swarmLayout = computed(() => bootCurtain.value || swarm.active.value)
 const currentSecond = computed(() => Math.floor(timeStore.now / 1000))
 const currentDate = computed(() => new Date(currentSecond.value * 1000))
 const currentDay = computed(() => localDateStr(currentDate.value))
@@ -177,24 +176,7 @@ async function settleScene() {
   await waitFrame()
 }
 
-function queueSceneReplay() {
-  const revision = ++sceneRevision
-  if (bootCurtain.value || !swarm.supported.value || !settingsStore.settings.swarmEffects || !currentSurfaceAllows()) {
-    scenePreparing.value = false
-    return
-  }
-  scenePreparing.value = true
-  const valid = () => !disposed && !bootCurtain.value && revision === sceneRevision
-  void settleScene().then(() => swarm.replay({ mouseOnly: true, valid })).finally(() => {
-    if (revision === sceneRevision) scenePreparing.value = false
-  })
-}
-
-watch([isSettings, () => settingsStore.examModeActive], queueSceneReplay, { flush: 'sync' })
-watch(dialogActivity, (count, previous) => {
-  if (count > previous) queueSceneReplay()
-  if (count < previous) { ++sceneRevision; scenePreparing.value = false; swarm.interrupt() }
-}, { flush: 'sync' })
+watch(overlayOpen, open => { if (open) swarm.interrupt() }, { flush: 'sync' })
 
 function syncViewport() {
   viewport.value = { width: window.innerWidth, height: window.innerHeight }
@@ -415,7 +397,7 @@ async function launchDesktop({ prepare, reveal = true, cold = false }) {
     if (!valid()) return
     launchSettling.value = false
     await nextTick()
-    if (reveal && (cold || launch?.replay)) await swarm.replay({ sounds: launch?.sounds, volume: launch?.volume, valid })
+    if (reveal && (cold || launch?.replay)) await swarm.replay({ sounds: launch?.sounds, volume: launch?.volume, valid: () => valid() && !overlayOpen.value })
   } catch {
     if (reveal && valid()) await desktopWindowAction('show').catch(() => {})
   } finally {
@@ -718,7 +700,7 @@ onMounted(async () => {
   window.addEventListener('focus', syncAfterVisibilityChange)
   if (desktopAvailable.value) void initializeDesktopWindow()
   else if (bootCurtain.value) {
-    const valid = () => !disposed && bootCurtain.value
+    const valid = () => !disposed && bootCurtain.value && !overlayOpen.value
     void settleScene().then(() => swarm.replay({ valid })).finally(() => { bootCurtain.value = false })
   }
   stopRightClick = event => event.preventDefault()

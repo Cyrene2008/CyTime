@@ -72,9 +72,9 @@ export function useSwarmEffects(router, { enabled, sound, suspended, allowsRoute
     core?.setPageEnabled(allowsSurface() && !suspended())
   }
 
-  async function replay({ mouseOnly = false, sounds, volume, valid = () => true } = {}) {
+  async function replay({ sounds, volume, valid = () => true } = {}) {
     await connecting
-    if (!core || !valid() || !canPlay(mouseOnly) || !allowsSurface()) return false
+    if (!core || !valid() || !canPlay() || !allowsSurface()) return false
     interrupt()
     const instance = core
     instance.setPageEnabled(true)
@@ -212,5 +212,5 @@ export function useSwarmEffects(router, { enabled, sound, suspended, allowsRoute
     window.removeEventListener('resize', interrupt)
     document.removeEventListener('visibilitychange', onVisibility)
   })
-  return { active, supported, replay, interrupt }
+  return { active, replay, interrupt }
 }

@@ -1,0 +1,251 @@
+diff --git a/src/composable.js b/src/composable.js
+index 2e94813..cf7ccd0 100644
+--- a/src/composable.js
++++ b/src/composable.js
+@@ -47,0 +48 @@ export function useSwarmCursors() {
++    replay: core.replay,
+diff --git a/src/core.js b/src/core.js
+index fc7c451..08e9c32 100644
+--- a/src/core.js
++++ b/src/core.js
+@@ -122,0 +123 @@ function noopCore() {
++    replay: () => Promise.resolve(),
+@@ -542 +543,2 @@ export function createSwarmCursors(options) {
+-          routerManaged: routerAttached,
++          routerManaged: routerAttached || !!options?.playback,
++          playback: options?.playback,
+@@ -568,0 +571,28 @@ export function createSwarmCursors(options) {
++  function interruptRun() {
++    runId++;
++    startPromise = null;
++    clearTimeout(autoTimer);
++    clearTimeout(revealTimer);
++    clearTimeout(showTimer);
++    revealScheduled = false;
++    stopPoll();
++    if (engine) engine.stop(false, true);
++    if (state.running || state.loading) {
++      setState({ running: false, loading: false });
++      emit("end", snapshot());
++    }
++  }
++
++  function replay({ sound = false, volume = 0.1 } = {}) {
++    if (destroyed || !state.pageEnabled || pendingRoute ||
++        window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return Promise.resolve();
++    // Put the cover above any old drawing before discarding it. A fresh
++    // engine capture then gets route layout clipping with no previous model.
++    showCover(true);
++    interruptRun();
++    return begin({
++      route: true,
++      playback: { sound: sound === true, volume: Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0.1 },
++    });
++  }
++
+@@ -677,14 +707 @@ export function createSwarmCursors(options) {
+-    if (!first) {
+-      runId++;
+-      startPromise = null;
+-      clearTimeout(autoTimer);
+-      clearTimeout(revealTimer);
+-      clearTimeout(showTimer);
+-      revealScheduled = false;
+-      stopPoll();
+-      if (engine) engine.stop(false, true);
+-      if (state.running || state.loading) {
+-        setState({ running: false, loading: false });
+-        emit("end", snapshot());
+-      }
+-    }
++    if (!first) interruptRun();
+@@ -895,0 +913 @@ export function createSwarmCursors(options) {
++    replay,
+diff --git a/src/engine-runtime.js b/src/engine-runtime.js
+index accd924..0933551 100644
+--- a/src/engine-runtime.js
++++ b/src/engine-runtime.js
+@@ -660,0 +661,22 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
++    const unitScale = [1, 1];
++    const scaleCache = new Map([[html, unitScale]]);
++    function textScale(el) {
++      if (!el) return unitScale;
++      if (scaleCache.has(el)) return scaleCache.get(el);
++      const cs = css(el);
++      let scale = textScale(el.assignedSlot || el.parentElement || el.getRootNode().host);
++      if (scale && cs.display !== "contents" && (cs.display !== "inline" || REPLACED.has(el.localName) || FORMS.has(el.localName))) {
++        if ((cs.rotate && cs.rotate !== "none") || cs.perspective !== "none") scale = null;
++        if (scale && cs.transform !== "none") {
++          const m = new DOMMatrixReadOnly(cs.transform);
++          scale = m.is2D && m.a > 0 && m.d > 0 && Math.abs(m.b) < 1e-6 && Math.abs(m.c) < 1e-6
++            ? [scale[0] * m.a, scale[1] * m.d] : null;
++        }
++        if (scale && cs.scale && cs.scale !== "none") {
++          const [x, y = x, z = 1] = cs.scale.split(/\s+/).map(Number);
++          scale = x > 0 && y > 0 && z === 1 ? [scale[0] * x, scale[1] * y] : null;
++        }
++      }
++      scaleCache.set(el, scale);
++      return scale;
++    }
+@@ -662,5 +684,7 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-    // ancestors of marked elements instead, so even an inline marker is omitted.
+-    const persistBranches = new Set();
+-    if (env.route) {
+-      for (const el of document.querySelectorAll("[" + PERSIST_ATTRIBUTE + "]"))
+-        for (let p = el; p && !persistBranches.has(p); p = p.parentElement) persistBranches.add(p);
++    // marked branches to omit persistent UI and capture each live glyph separately.
++    const separateBranches = new Set();
++    const glyphAttribute = "data-swarm-glyph";
++    const glyphSelector = "[" + glyphAttribute + "]";
++    const selector = env.route ? glyphSelector + ",[" + PERSIST_ATTRIBUTE + "]" : glyphSelector;
++    for (const el of document.querySelectorAll(selector)) {
++      for (let p = el; p && !separateBranches.has(p); p = p.parentElement) separateBranches.add(p);
+@@ -698 +722 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      if (persistBranches.has(el)) return false;
++      if (separateBranches.has(el)) return false;
+@@ -749 +773 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-    function textItem(base, root, tb, cs, layer, extra) {
++    function textItem(base, root, tb, cs, [scaleX, scaleY]) {
+@@ -751,0 +776,8 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
++      // The overlay is outside the original transform tree. Lay the clone out at
++      // its original size inside the projected box, then project the whole clone.
++      if (scaleX !== 1 || scaleY !== 1) {
++        root.style.width = (100 / scaleX) + "%";
++        root.style.height = (100 / scaleY) + "%";
++        root.style.transformOrigin = "top left";
++        root.style.transform = `scale(${scaleX},${scaleY})`;
++      }
+@@ -757,2 +789,2 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-        fs,
+-        lh: lhPx(cs),
++        fs: fs * scaleY,
++        lh: lhPx(cs) * scaleY,
+@@ -762 +793,0 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-        ...extra,
+@@ -766,0 +798,2 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
++      const scale = textScale(el) || unitScale;
++      const [scaleX, scaleY] = scale;
+@@ -777 +810 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      if (cs.display === "table-cell" && tr.height) root.style.paddingTop = Math.max(0, tr.top - r.top) + "px";
++      if (cs.display === "table-cell" && tr.height) root.style.paddingTop = Math.max(0, tr.top - r.top) / scaleY + "px";
+@@ -780,4 +813,4 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-        const n = (p) => parseFloat(cs.getPropertyValue(p)) || 0;
+-        const cl = r.left + n("border-left-width") + n("padding-left");
+-        const ct = r.top + n("border-top-width") + n("padding-top");
+-        const cr = r.right - n("border-right-width") - n("padding-right");
++        const n = (p, factor) => (parseFloat(cs.getPropertyValue(p)) || 0) * factor;
++        const cl = r.left + n("border-left-width", scaleX) + n("padding-left", scaleX);
++        const ct = r.top + n("border-top-width", scaleY) + n("padding-top", scaleY);
++        const cr = r.right - n("border-right-width", scaleX) - n("padding-right", scaleX);
+@@ -791 +824 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-          setStyle(shim, `float:${f.side};clear:${f.side};width:${w}px;height:${Math.max(0, f.b - Math.max(f.t, ct))}px;margin-top:${top}px;`);
++          setStyle(shim, `float:${f.side};clear:${f.side};width:${w / scaleX}px;height:${Math.max(0, f.b - Math.max(f.t, ct)) / scaleY}px;margin-top:${top / scaleY}px;`);
+@@ -799 +832 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      textItem(
++      const it = textItem(
+@@ -804 +837 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-        ctx.layer,
++        scale,
+@@ -805,0 +839 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
++      if (el.hasAttribute(glyphAttribute) && /^[0-9:]$/.test(it.text)) it.glyph = el;
+@@ -817 +851,2 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      const single = r.height < lhPx(cs) * 1.6;
++      const scale = textScale(el) || unitScale;
++      const single = r.height < lhPx(cs) * scale[1] * 1.6;
+@@ -831 +866 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-        ctx.layer,
++        scale,
+@@ -1172 +1207 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-        ctx.layer,
++        textScale(el) || unitScale,
+@@ -1210,2 +1245,3 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-        const n = (p) => parseFloat(cs.getPropertyValue(p)) || 0;
+-        floats.push({ el, side: cs.float, l: r.left - n("margin-left"), t: r.top - n("margin-top"), r: r.right + n("margin-right"), b: r.bottom + n("margin-bottom") });
++        const [scaleX, scaleY] = textScale(el) || unitScale;
++        const n = (p, factor) => (parseFloat(cs.getPropertyValue(p)) || 0) * factor;
++        floats.push({ el, side: cs.float, l: r.left - n("margin-left", scaleX), t: r.top - n("margin-top", scaleY), r: r.right + n("margin-right", scaleX), b: r.bottom + n("margin-bottom", scaleY) });
+@@ -1326 +1362 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-        if (persistBranches.has(n) || n.shadowRoot || nt === "slot") inl = false;
++        if (separateBranches.has(n) || n.shadowRoot || nt === "slot") inl = false;
+@@ -1387,0 +1424 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
++        if (items.slice(k.start, k.end).some((it) => it.glyph)) continue;
+@@ -1422 +1459 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      if (it.kind !== "text" || it.copyOf || !it.text) continue;
++      if (it.kind !== "text" || it.copyOf || it.glyph || !it.text) continue;
+@@ -2031,0 +2069,4 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
++        if (it.glyph && it.units.length === 1 && it.units[0].t) {
++          n.setAttribute("data-swarm-glyph", "");
++          this.watchGlyph(it);
++        }
+@@ -2040,0 +2082,22 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
++    watchGlyph(it) {
++      if (!this.glyphObserver) {
++        this.glyphs = [];
++        this.glyphObserver = new MutationObserver(() => {
++          for (const glyph of this.glyphs) this.updateGlyph(glyph);
++        });
++      }
++      this.glyphs.push(it);
++      this.glyphObserver.observe(it.glyph, { childList: true, characterData: true, subtree: true });
++      this.updateGlyph(it);
++    }
++
++    updateGlyph(it) {
++      const value = it.glyph.textContent;
++      const unit = it.units[0];
++      if (value === unit.s || !/^[0-9:]$/.test(value)) return;
++      unit.s = it.seq = value;
++      // Updating the source never reveals an unbuilt glyph. Keep tracking it
++      // during the final fade too, when the animation loop has already stopped.
++      it._last = reveal(it, it.shown);
++    }
++
+@@ -3317,2 +3380,4 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-    constructor() {
+-      this.on = THEME.sound === false ? false : THEME.sound === true ? true : soundPref;
++    constructor(playback) {
++      this.playback = playback;
++      this.volume = playback?.volume ?? 1;
++      this.on = playback ? playback.sound : THEME.sound === false ? false : THEME.sound === true ? true : soundPref;
+@@ -3339 +3404 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      out.gain.value = this.on ? 1 : 0;
++      out.gain.value = this.on ? this.volume : 0;
+@@ -3396 +3461,2 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      this.on = soundPref = on;
++      this.on = on;
++      if (!this.playback) soundPref = on;
+@@ -3400 +3466 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      this.out.gain.setTargetAtTime(on ? 1 : 0, t, 0.05);
++      this.out.gain.setTargetAtTime(on ? this.volume : 0, t, 0.05);
+@@ -3787 +3853 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      if (old.twinOf) continue;
++      if (old.twinOf || old.glyph) continue;
+@@ -3810 +3876 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      if (it.copyOf || it.twinOf || !it.task || it.task.state !== "wait") continue;
++      if (it.copyOf || it.twinOf || it.glyph || !it.task || it.task.state !== "wait") continue;
+@@ -3965 +4031 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      this.sfx = new Sound();
++      this.sfx = new Sound(opts?.playback);
+@@ -3999 +4065 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
+-      if (!quiet) await this.scan();
++      if (!quiet && !opts?.playback) await this.scan();
+@@ -4623,0 +4690 @@ import { ARROW as ARROW_D, arrowArtwork } from "./arrow.js";
++        this.view.glyphObserver?.disconnect();
+diff --git a/types/index.d.ts b/types/index.d.ts
+index d8a7edf..6ffe473 100644
+--- a/types/index.d.ts
++++ b/types/index.d.ts
+@@ -104,0 +105,7 @@ export interface SwarmCursorsOptions {
++export interface SwarmCursorsReplayOptions {
++  /** Play sound for this replay only. Default: false. */
++  sound?: boolean;
++  /** Replay output gain, from 0 to 1. Default: 0.1. */
++  volume?: number;
++}
++
+@@ -109,0 +117,2 @@ export interface SwarmCursorsCore {
++  /** Restart the current page under the cover, preserving live regions and route navigation. */
++  replay(options?: SwarmCursorsReplayOptions): Promise<void>;
+@@ -123,0 +133 @@ export interface UseSwarmCursorsReturn {
++  replay: (options?: SwarmCursorsReplayOptions) => Promise<void>;

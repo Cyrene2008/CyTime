@@ -105,7 +105,7 @@ watch(settingsOpen, open => { if (open) window.__cytimeShowControls?.() })
 <template>
   <section class="focus-view">
     <div class="focus-status">{{ task?.status === 'paused' ? '已暂停' : task?.label || '点击时间设置倒计时' }}</div>
-    <time ref="clockRef" class="focus-clock" :class="{ muted: !task, warning: isWarning }" role="button" tabindex="0" aria-label="打开倒计时设置" @click="openSettings" @keydown.enter.prevent="openSettings" @keydown.space.prevent="openSettings"><template v-for="(char, index) in display.split('')" :key="index"><b v-if="char === ':'">:</b><span v-else class="hero-digit">{{ char }}</span></template></time>
+    <time ref="clockRef" class="focus-clock" :class="{ muted: !task, warning: isWarning }" role="button" tabindex="0" aria-label="打开倒计时设置" @click="openSettings" @keydown.enter.prevent="openSettings" @keydown.space.prevent="openSettings"><template v-for="(char, index) in display.split('')" :key="index"><b v-if="char === ':'" data-swarm-glyph>:</b><span v-else class="hero-digit" data-swarm-glyph>{{ char }}</span></template></time>
     <p v-if="isFinished" class="focus-caption finished-caption" role="status">时间到</p>
     <p v-else-if="isWarning" class="focus-caption warning-caption" role="status">{{ Math.ceil(remaining) }} 秒后结束</p>
     <div class="focus-controls">

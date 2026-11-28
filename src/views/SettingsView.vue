@@ -627,7 +627,7 @@ onBeforeUnmount(() => {
           <span class="settings-kicker">视觉外观</span><h2>指针特效</h2><p class="settings-lead">预览主题光标，设置绘制过场的范围和音效。</p>
           <section class="setting-card">
             <div class="setting-row">
-              <div><h3>指针特效</h3><p>普通箭头跟随主题色。进入启用的页面或打开弹窗时可播放绘制，按 Esc 可跳过。触屏和系统减少动态效果时保留原样。</p></div>
+              <div><h3>指针特效</h3><p>普通箭头跟随主题色。打开、刷新或用鼠标切换到启用的页面时播放绘制，按 Esc 可跳过。设置和弹窗直接打开；触屏和系统减少动态效果时保留原样。</p></div>
               <button type="button" class="switch" role="switch" aria-label="指针特效" :class="{ on: draft.swarmEffects }" :aria-checked="draft.swarmEffects" @click="togglePointerEffects"><i></i></button>
             </div>
             <div class="setting-row">

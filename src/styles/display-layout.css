@@ -58,6 +58,7 @@ html[data-font="wengfaluosi"] .clock-view { --clock-unit: 19px; --clock-stretch:
   );
 }
 .clock-view .clock-eyebrow { font-size: calc(12px * var(--detail-scale)); }
+:is(.hero-clock, .focus-clock) b[data-swarm-glyph] { display: inline-block; }
 .hero-date-block { max-width: 100%; }
 .hero-date {
   color: var(--clock-detail-color, var(--text-secondary));
