@@ -48,6 +48,7 @@ export interface SwarmCursorsRouter {
   beforeEach?(callback: (...args: any[]) => any): (() => void) | void;
   onError?(callback: (...args: any[]) => any): (() => void) | void;
   isReady?(): Promise<void>;
+  resolve?(route: any): { href: string };
 }
 
 export interface SwarmCursorsOptions {
@@ -57,8 +58,8 @@ export interface SwarmCursorsOptions {
   auto?: boolean;
   /** Delay before an automatic start, in ms. Default: 1800. */
   autoDelay?: number;
-  /** Start on each confirmed route, replacing an unfinished rebuild. */
-  autoOnRoute?: boolean;
+  /** Start on each confirmed route (true) or eligible link activation ("link"). */
+  autoOnRoute?: boolean | "link";
   /** Delay after a route change, in ms. Default: 900. */
   routeDelay?: number;
   /** With auto, only start once per tab + path. */
@@ -79,6 +80,8 @@ export interface SwarmCursorsOptions {
   companion?: boolean;
   /** Follow the mouse after a rebuild (default), or replace its arrow throughout an enabled page. */
   companionMode?: "follow" | "replace";
+  /** Hide the drawing cursors, leaving outlines and the companion cursor visible. Default: false. */
+  hideWorkerPointers?: boolean;
   /** Fade back to the real page when the rebuild completes. Default: true (false when hud is true). */
   autoReveal?: boolean;
   /** Delay before the automatic reveal, in ms. Default: 1600. */
@@ -119,6 +122,7 @@ export interface SwarmCursorsCore {
   stop(reveal?: boolean): void;
   toggle(): void;
   setPageEnabled(enabled: boolean): void;
+  setWorkerPointersHidden(hidden: boolean): void;
   on(
     event: "state" | "start" | "end" | "error",
     listener: (payload: any) => void
@@ -134,6 +138,7 @@ export interface UseSwarmCursorsReturn {
   stop: (reveal?: boolean) => void;
   toggle: () => void;
   setPageEnabled: (enabled: boolean) => void;
+  setWorkerPointersHidden: (hidden: boolean) => void;
   running: Ref<boolean>;
   loading: Ref<boolean>;
   loaded: Ref<boolean>;

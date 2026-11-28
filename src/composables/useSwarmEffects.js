@@ -5,7 +5,7 @@ const inputTarget = 'a, button, input, textarea, select, label, [contenteditable
 const accent = 'var(--cytime-swarm-accent)'
 const background = 'var(--bg-base)'
 
-export function useSwarmEffects(router, { enabled, sound, suspended, allowsRoute, allowsSurface }) {
+export function useSwarmEffects(router, { enabled, sound, hideWorkers, suspended, allowsRoute, allowsSurface }) {
   const supported = ref(false)
   const active = ref(false)
   let preference
@@ -144,6 +144,7 @@ export function useSwarmEffects(router, { enabled, sound, suspended, allowsRoute
       sound: false,
       companion: true,
       companionMode: 'replace',
+      hideWorkerPointers: hideWorkers(),
       autoReveal: true,
       autoRevealDelay: 120
     })
@@ -192,6 +193,8 @@ export function useSwarmEffects(router, { enabled, sound, suspended, allowsRoute
     if (paused || !allowed) interrupt()
     updateArrow()
   }, { flush: 'post' })
+
+  watch(hideWorkers, hidden => core?.setWorkerPointersHidden(hidden), { flush: 'sync' })
 
   onMounted(() => {
     preference = window.matchMedia(swarmMotionQuery)

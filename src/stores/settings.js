@@ -140,7 +140,6 @@ export function applyTheme(settings) {
   root.dataset.font = settings.fontFamily
   root.dataset.background = settings.background
   root.dataset.immersive = settings.immersiveMode ? 'on' : 'off'
-  root.dataset.swarmHidePointers = settings.swarmHidePointers ? 'on' : 'off'
 
   // One accent → full Fluent ramp (same idea as VueFluentWidgets accentColor).
   const accent = (settings.accentColor || '').trim()

@@ -131,6 +131,8 @@ app.use(SwarmCursors, {
 
 前一页仍在绘制时，确认新路由会取消旧的重建，并按目标页的配置重新开始。
 
+只想在操作站内链接时播放，可设 `autoOnRoute: 'link'`。普通鼠标、键盘 Enter 和辅助工具激活的 Vue Router 链接都会触发；触屏、触控笔、浏览器历史和直接调用 `router.push()` 会直接切页。这个模式下，首屏是否播放由 `auto` 控制，页面仍可用 `meta.swarmCursors: false` 禁用效果。
+
 有侧栏的布局可以从 1.3.1 起给正文容器加 `data-swarm-pageview`，如 `<main data-swarm-pageview><RouterView /></main>`。站内切页时，封面的 Logo、短线和光晕会对准正文区域（PageView）可见部分的中心。首次进站或刷新仍使用视口中心，并在重建时绘制 Dock；没有可见标记时也使用视口中心。手机布局想保留原样，可用 `:data-swarm-pageview="isMobile ? undefined : ''"` 只在桌面添加标记。与它配套的 `data-swarm-persist` 标在 Dock 上，用来让真实导航在切页时保持可见、可点击。
 
 ### 按页面配置：某个页面不跑
@@ -183,6 +185,7 @@ core.setPageEnabled(true)
 - `sound: false`：不播放合成音效
 - `companion: true`：默认 `companionMode: 'follow'` 在重建结束后显示跟随光标。1.4.0 的 `'replace'` 模式从进入启用页面起，就把普通区域的系统箭头换成主题色的无尾柄箭头；封面、绘制和完成后都保持，不再另画一枚跟随光标。文本选择、链接、控件和调整大小等操作保留原光标。禁用页面、关闭陪伴光标、触摸、减少动态效果或系统强制配色时不替换。
 - `autoReveal: true`：播放完成后自动 reveal，不需要手动点 Go live
+  - 隐藏 HUD 的自动模式只等待当前可见区域完成，不主动滚动页面；带 HUD 的手动模式仍可滚动重建整页。
 - `cover: true`：路由切换时先用主题遮罩盖住新页面，引擎在遮罩后捕获，再开始画。这样不会“先看到完整的新页面，再被清空”，也不会让新页面内容消失
 
 某个页面想要操作栏，在页面源码里开：
@@ -256,6 +259,8 @@ const { start, stop, toggle, running, loading, loaded, error } = useSwarmCursors
 
 `running` / `loading` / `loaded` / `error` 是 ref，模板里会自动解包。
 
+`useSwarmCursors()` 也提供 `replay()`。它会终止当前绘制，在封面下重新采集当前页，保留标有 `data-swarm-persist` 的导航。默认静音；`replay({ sound: true, volume: 0.1 })` 只为这次重播开启声音，`volume` 范围为 0–1，默认 0.1。页面禁用效果或系统开启“减少动态效果”时会跳过重播。
+
 ### 3. Renderless 组件
 
 ```vue
@@ -278,6 +283,30 @@ const { start, stop, toggle, running, loading, loaded, error } = useSwarmCursors
 
 ---
 
+## 实时数字和指针样式
+
+给单个数字或冒号的纯文本元素添加 `data-swarm-glyph`。画面会照常逐字绘制，字符出现后跟随原元素的文本更新；未绘制的字符不会提前露出。用稳定的 Vue key，保持每个元素只包含一个 ASCII 数字或冒号。给数字固定宽度可以避免随数字变化而移动。
+
+列表或结果区可能整体更新时，把 `data-swarm-live-region` 加在其稳定的容器上。结构或文本变化会立即把画面交还给真实页面，避免旧内容盖住新结果；该区域内已标记的单字符仍由 `data-swarm-glyph` 实时绘制。
+
+```vue
+<time>
+  <span v-for="(glyph, index) in clockText.split('')" :key="index" data-swarm-glyph>{{ glyph }}</span>
+</time>
+```
+
+文字采集支持祖先上的正向水平和垂直 CSS 缩放（例如 `scale(1.25)` 或 `scaleX(1.08)`），在同一位置按缩放前的样式排版，再投影到目标尺寸。旋转、倾斜和透视不在这项支持范围内。
+
+设置 `hideWorkerPointers: true` 可只隐藏负责绘制的指针，同时保留描边和用户指针。设置页可以调用 `core.setWorkerPointersHidden(hidden)`，或使用 `useSwarmCursors()` 提供的同名方法；正在播放的绘制也会立即更新。
+
+如果已经用宿主的 CSS 管理开关，原有的部件仍可使用：
+
+```css
+div-pointers::part(worker-pointers) { display: none; }
+```
+
+页面仍会绘制；真实鼠标的主题指针、封面和交互不受影响。
+
 ## 选项
 
 | 选项 | 类型 | 默认 | 说明 |
@@ -285,7 +314,7 @@ const { start, stop, toggle, running, loading, loaded, error } = useSwarmCursors
 | `button` | boolean | `true` | 是否自动挂载右下角胶囊 |
 | `auto` | boolean | `false` | 安装后自动播放一次 |
 | `autoDelay` | number | `1800` | 自动播放延迟（ms） |
-| `autoOnRoute` | boolean | `false` | 每次路由切换后自动播放 |
+| `autoOnRoute` | boolean 或 `'link'` | `false` | `true` 在每次路由切换后播放；`'link'` 只在鼠标、键盘或辅助工具激活站内链接后播放 |
 | `routeDelay` | number | `900` | 路由切换后的延迟（ms） |
 | `once` | boolean | `false` | 自动播放每个标签页 + 路径只一次 |
 | `preload` | boolean | `false` | 安装后预下载引擎，但不播放 |
@@ -299,6 +328,7 @@ const { start, stop, toggle, running, loading, loaded, error } = useSwarmCursors
 | `sound` | boolean | `false` | 合成音效 |
 | `companion` | boolean | `true` | 启用陪伴光标，由模式决定显示时机 |
 | `companionMode` | `'follow' \| 'replace'` | `'follow'` | 在鼠标旁边跟随，或用主题箭头替换网页普通区域的系统箭头 |
+| `hideWorkerPointers` | boolean | `false` | 隐藏绘制指针，保留描边、标记和用户指针 |
 | `autoReveal` | boolean | `true` | 播放完成后自动淡回真实页面；`hud: true` 时默认 false |
 | `autoRevealDelay` | number | `1600` | 自动 reveal 延迟（ms） |
 | `captureDelay` | number | `0` | 遮罩后等待动态内容加载再捕获（ms） |
@@ -363,6 +393,7 @@ core.on('state', (state) => console.log(state))
 
 ```js
 core.start()
+core.replay({ sound: true, volume: 0.1 })
 core.stop(true)   // true = 淡出回真实页面
 core.toggle()
 core.setPageEnabled(false) // 当前页面不跑，并停止播放

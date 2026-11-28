@@ -65,6 +65,7 @@ watch(isSettings, open => { if (!open) pointerPreview.value = null }, { flush: '
 const swarm = useSwarmEffects(router, {
   enabled: () => (pointerPreview.value ?? settingsStore.settings.swarmEffects) === true,
   sound: () => settingsStore.settings.swarmSound === true,
+  hideWorkers: () => settingsStore.settings.swarmHidePointers === true,
   suspended: () => launchSettling.value || isHomeworkWindow.value,
   allowsRoute: candidate => !modalOpen.value && effectsAllowed(candidate.meta.swarmSurface),
   allowsSurface: currentSurfaceAllows
