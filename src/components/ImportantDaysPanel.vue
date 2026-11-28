@@ -4,6 +4,7 @@ import { localDateStr } from '../services/duty'
 import { groupImportantDays, importantDayStatus, isImportantDate } from '../services/importantDays'
 import { useContentStore } from '../stores/content'
 import { useTimeStore } from '../stores/time'
+import FluentDateField from './FluentDateField.vue'
 
 const props = defineProps({ focusOnOpen: Boolean })
 const contentStore = useContentStore()
@@ -102,10 +103,8 @@ function deleteDay(item) {
           <span>名称</span>
           <input ref="nameInput" v-model="draft.name" type="text" maxlength="80" placeholder="例如：期末考试" required :aria-invalid="invalidField === 'name' || undefined" />
         </label>
-        <label class="important-day-field">
-          <span>日期</span>
-          <input ref="dateInput" v-model="draft.date" type="date" min="0001-01-01" max="9999-12-31" required :aria-invalid="invalidField === 'date' || undefined" />
-        </label>
+        <FluentDateField ref="dateInput" v-model="draft.date" label="日期" required :invalid="invalidField === 'date'"
+          @update:model-value="clearError" />
       </div>
       <div class="important-day-options">
         <label><input v-model="draft.recurring" type="checkbox" />每年重复</label>

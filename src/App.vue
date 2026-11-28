@@ -10,17 +10,19 @@ import { useQuotesStore } from './stores/quotes'
 import { dayProgress, formatDuration } from './utils/time'
 import { parseCountdownTarget } from './utils/time'
 import { FILING_NAME, FILING_URL } from './config/branding'
-import { desktopWindowAction, getDesktopStartupArgs, initDesktopBridge, isDesktop, openHomeworkManageWindow, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
+import { desktopWindowAction, getDesktopStartupArgs, initDesktopBridge, isDesktop, openHomeworkManageWindow, prepareDesktopUri, probeDesktop, setDesktopUriRegistration, setDesktopWindowMode } from './services/desktop'
 import { homeworkManageOpen } from './composables/useHomeworkManage'
 import { installPopupFit } from './services/popupFit'
 import { dialogActivityKey } from './composables/useDialogActivity'
-import { useSwarmEffects } from './composables/useSwarmEffects'
+import { swarmMotionQuery, useSwarmEffects } from './composables/useSwarmEffects'
+import { allowsSwarmSurface } from './services/swarmScope'
 import HomeworkPanel from './components/HomeworkPanel.vue'
 import { fetchNetworkTime } from './services/timeSync'
 import { locateWeatherCity } from './services/weather'
 import { localDateStr } from './services/duty'
 import { groupImportantDays, importantDayPreviews, importantDayStatus } from './services/importantDays'
 
+const props = defineProps({ desktopLaunch: Boolean })
 const route = useRoute()
 const router = useRouter()
 const timeStore = useTimeStore()
@@ -48,12 +50,26 @@ provide('cytimeStageActive', computed(() => !isSettings.value && !dialogActivity
 const purePromptOpen = ref(false)
 const purePromptSeconds = ref(10)
 const pointerPreview = ref(null)
+const effectsAllowed = (surface) => allowsSwarmSurface(settingsStore.settings, surface, settingsStore.examModeActive)
+const currentSurfaceAllows = () => isSettings.value && pointerPreview.value !== null
+  ? pointerPreview.value && (!settingsStore.examModeActive || !settingsStore.settings.swarmDisablePure)
+  : effectsAllowed(isSettings.value ? 'settings' : route.meta.swarmSurface)
+const bootCurtain = ref(props.desktopLaunch || (settingsStore.settings.swarmEffects && currentSurfaceAllows() && window.matchMedia(swarmMotionQuery).matches))
+const launchSettling = ref(props.desktopLaunch)
+const scenePreparing = ref(false)
+let sceneRevision = 0
+let launchController
+let nativePreparation = Promise.resolve()
+let disposed = false
 watch(isSettings, open => { if (!open) pointerPreview.value = null }, { flush: 'sync' })
-useSwarmEffects(router, {
+const swarm = useSwarmEffects(router, {
   enabled: () => (pointerPreview.value ?? settingsStore.settings.swarmEffects) === true,
   sound: () => settingsStore.settings.swarmSound === true,
-  suspended: () => isSettings.value || dialogActivity.value > 0 || settingsStore.examModeActive || desktopMini.value || isHomeworkWindow.value
+  suspended: () => launchSettling.value || isHomeworkWindow.value,
+  allowsRoute: candidate => !isSettings.value && effectsAllowed(candidate.meta.swarmSurface),
+  allowsSurface: currentSurfaceAllows
 })
+const swarmLayout = computed(() => bootCurtain.value || scenePreparing.value || swarm.active.value)
 const currentSecond = computed(() => Math.floor(timeStore.now / 1000))
 const currentDate = computed(() => new Date(currentSecond.value * 1000))
 const currentDay = computed(() => localDateStr(currentDate.value))
@@ -91,6 +107,8 @@ let controlsTimer
 let noticeTimer
 let purePromptTimer
 let purePromptCountdownTimer
+let automaticPurePromptTimer
+let automaticPurePromptPending = false
 let dayRotationTimer
 let showControlsHandler
 let taskResizeObserver
@@ -144,6 +162,39 @@ const blackboardShown = computed(() => blackboardEnabled.value && (!switchableBo
 provide('cytimeClassroomBoards', { homeworkEnabled, blackboardEnabled, homeworkShown, blackboardShown, compactBoards, switchableBoards, selectedBoard })
 const taskSide = computed(() => homeworkShown.value && settingsStore.settings.homeworkPosition === 'right' ? 'left' : 'right')
 const blackboardActive = computed(() => route.path === '/time' && !isSettings.value && blackboardShown.value)
+
+const waitFrame = () => new Promise(resolve => {
+  const timer = window.setTimeout(() => { window.cancelAnimationFrame(frame); resolve() }, 160)
+  const frame = window.requestAnimationFrame(() => { window.clearTimeout(timer); resolve() })
+})
+
+async function settleScene() {
+  await nextTick()
+  syncViewport()
+  await nextTick()
+  await waitFrame()
+  syncContentSafeTop()
+  await waitFrame()
+}
+
+function queueSceneReplay() {
+  const revision = ++sceneRevision
+  if (bootCurtain.value || !swarm.supported.value || !settingsStore.settings.swarmEffects || !currentSurfaceAllows()) {
+    scenePreparing.value = false
+    return
+  }
+  scenePreparing.value = true
+  const valid = () => !disposed && !bootCurtain.value && revision === sceneRevision
+  void settleScene().then(() => swarm.replay({ mouseOnly: true, valid })).finally(() => {
+    if (revision === sceneRevision) scenePreparing.value = false
+  })
+}
+
+watch([isSettings, () => settingsStore.examModeActive], queueSceneReplay, { flush: 'sync' })
+watch(dialogActivity, (count, previous) => {
+  if (count > previous) queueSceneReplay()
+  if (count < previous) { ++sceneRevision; scenePreparing.value = false; swarm.interrupt() }
+}, { flush: 'sync' })
 
 function syncViewport() {
   viewport.value = { width: window.innerWidth, height: window.innerHeight }
@@ -316,44 +367,82 @@ function closeSettings() {
 
 function scheduleIdleReturn() {
   window.clearTimeout(idleReturnTimer)
-  if (!settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value || isClassroom.value || isSettings.value || dialogActivity.value || purePromptOpen.value) return
+  if (launchSettling.value || !settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value || isClassroom.value || isSettings.value || dialogActivity.value || purePromptOpen.value) return
   idleReturnTimer = window.setTimeout(() => {
-    if (!settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value || isClassroom.value || isSettings.value || dialogActivity.value || purePromptOpen.value) return
+    if (launchSettling.value || !settingsStore.settings.idleReturnTime || desktopMini.value || isHomeworkWindow.value || isClassroom.value || isSettings.value || dialogActivity.value || purePromptOpen.value) return
     if (route.path !== '/time') router.push('/time')
   }, 30000)
 }
 
-function handleDesktopUri(rawUri) {
-  if (!settingsStore.settings.uriRegistration) return
-  scheduleIdleReturn()
+function applyDesktopMode(mode) {
+  if (!mode) return
+  desktopMini.value = mode === 'mini'
+  fullscreenActive.value = mode === 'full'
+  desktopWindowMode.value = mode
+  window.__cytimeMiniMode = desktopMini.value
+}
+
+function waitForDesktopLayout(signal) {
+  if (signal.aborted) return Promise.resolve()
+  return new Promise(resolve => {
+    const finish = () => { window.clearTimeout(timer); signal.removeEventListener('abort', finish); resolve() }
+    const timer = window.setTimeout(finish, 5000)
+    signal.addEventListener('abort', finish, { once: true })
+  })
+}
+
+async function launchDesktop({ prepare, reveal = true, cold = false }) {
+  launchController?.abort()
+  const controller = new AbortController()
+  launchController = controller
+  const { signal } = controller
+  const valid = () => !disposed && !signal.aborted
+  bootCurtain.value = true
+  launchSettling.value = true
+  closePurePrompt()
+  swarm.interrupt()
+  const preparing = nativePreparation.then(() => valid() ? prepare() : null)
+  nativePreparation = preparing.catch(() => null)
   try {
-    const uri = new URL(String(rawUri))
-
-    // Homework manage: temporarily disabled (floating window closes ~1s after opening).
-    // if (uri.hostname === 'homework' && (uri.pathname === '/manage' || uri.pathname === 'manage' || uri.pathname === '' || uri.pathname === '/')) {
-    //   if (isDesktop()) openHomeworkManageWindow()
-    //   else homeworkManageOpen.value = true
-    //   return
-    // }
-
-    const mode = uri.searchParams.get('mode')
-    if (mode && ['mini', 'normal', 'max', 'full'].includes(mode)) {
-      desktopMini.value = mode === 'mini'
-      fullscreenActive.value = mode === 'full'
-      desktopWindowMode.value = mode
-      window.__cytimeMiniMode = desktopMini.value
-      setDesktopWindowMode(mode)
+    const launch = await preparing
+    if (!valid()) return
+    await waitForDesktopLayout(signal)
+    if (!valid()) return
+    if (reveal) await desktopWindowAction('show')
+    if (!valid()) return
+    if (reveal) showControlsHandler?.()
+    await settleScene()
+    if (!valid()) return
+    launchSettling.value = false
+    await nextTick()
+    if (reveal && (cold || launch?.replay)) await swarm.replay({ sounds: launch?.sounds, volume: launch?.volume, valid })
+  } catch {
+    if (reveal && valid()) await desktopWindowAction('show').catch(() => {})
+  } finally {
+    if (valid()) {
+      launchSettling.value = false
+      bootCurtain.value = false
+      launchController = undefined
+      scheduleIdleReturn()
     }
-    if (isDesktop()) desktopWindowAction('show')
+  }
+}
+
+function handleDesktopUri(rawUri, fallbackMode = null) {
+  if (!settingsStore.settings.uriRegistration) return
+  void launchDesktop({ cold: fallbackMode !== null, prepare: async () => {
+    const launch = await prepareDesktopUri(rawUri, fallbackMode)
+    const uri = new URL(launch.uri)
+    applyDesktopMode(launch.mode)
     const page = uri.hostname === 'page' ? uri.pathname.replace(/^\//, '') : ''
-    if (page === 'time' || page === 'clock') router.push('/time')
-    else if (['countdown', 'timer'].includes(page)) router.push(`/${page}`)
+    if (page === 'time' || page === 'clock') await router.push('/time')
+    else if (['countdown', 'timer'].includes(page)) await router.push(`/${page}`)
     else if (uri.hostname === 'countdown') {
       const targetInput = uri.searchParams.get('target')
       const length = Number(uri.searchParams.get('length'))
       const targetAt = targetInput ? parseCountdownTarget(targetInput, new Date(timeStore.now)) : length > 0 ? timeStore.now + length * 1000 : null
       if (targetAt) timeStore.addCountdown('', targetAt)
-      router.push('/countdown')
+      await router.push('/countdown')
     } else if (uri.hostname === 'task' && uri.pathname.startsWith('/countdown')) {
       const task = timeStore.countdowns.find(item => item.id === timeStore.selectedCountdownId) || timeStore.activeCountdowns[0]
       if (task) {
@@ -362,7 +451,8 @@ function handleDesktopUri(rawUri) {
         else if (uri.pathname.endsWith('/stop')) timeStore.stopCountdown(task)
       }
     }
-  } catch {}
+    return launch
+  } })
 }
 
 const countdownHandlers = {
@@ -495,7 +585,18 @@ function schedulePurePrompt() {
 }
 
 function showAutomaticPurePrompt() {
-  if (!isClassroom.value) schedulePurePrompt()
+  if (!automaticPurePromptPending || swarmLayout.value) return
+  automaticPurePromptPending = false
+  if (!isClassroom.value && !isHomeworkWindow.value && !purePromptOpen.value) schedulePurePrompt()
+}
+
+function queueAutomaticPurePrompt(delay) {
+  window.clearTimeout(automaticPurePromptTimer)
+  automaticPurePromptPending = false
+  automaticPurePromptTimer = window.setTimeout(() => {
+    automaticPurePromptPending = true
+    showAutomaticPurePrompt()
+  }, delay)
 }
 
 function enterExamMode() {
@@ -538,23 +639,22 @@ async function autoLocateWeather() {
 }
 
 async function initializeDesktopWindow() {
-  if (!isDesktop()) return
-  try {
-    const { getCurrentWindow } = await import('@tauri-apps/api/window')
-    isHomeworkWindow.value = getCurrentWindow().label === 'homework'
-  } catch {}
   // Dedicated homework window must not reshape / focus the main window.
-  if (isHomeworkWindow.value) return
-  const args = await getDesktopStartupArgs()
+  if (!isDesktop() || isHomeworkWindow.value) return
+  const args = await getDesktopStartupArgs().catch(() => [])
+  if (disposed) return
   desktopAutoStart.value = args.includes('--cyrene-auto-start')
-  const uriMode = settingsStore.settings.uriRegistration ? args.find(argument => argument.startsWith('cytime://'))?.match(/[?&]mode=(mini|normal|max|full)/)?.[1] : undefined
-  const mode = uriMode || settingsStore.settings.startupWindowMode || 'normal'
-  desktopMini.value = mode === 'mini'
-  fullscreenActive.value = mode === 'full'
-  desktopWindowMode.value = mode
-  window.__cytimeMiniMode = desktopMini.value
-  try { await setDesktopUriRegistration(settingsStore.settings.uriRegistration) } catch {}
-  await setDesktopWindowMode(mode, !desktopAutoStart.value || Boolean(uriMode))
+  const mode = settingsStore.settings.startupWindowMode || 'normal'
+  const coldUri = settingsStore.settings.uriRegistration ? args.find(argument => argument.startsWith('cytime://')) || '' : ''
+  if (coldUri) handleDesktopUri(coldUri, mode)
+  else void launchDesktop({ cold: true, reveal: !desktopAutoStart.value, prepare: async () => {
+    applyDesktopMode(mode)
+    await setDesktopWindowMode(mode, false)
+  } })
+  void setDesktopUriRegistration(settingsStore.settings.uriRegistration).catch(() => {})
+  const stop = await initDesktopBridge(handleDesktopUri, coldUri).catch(() => null)
+  if (disposed) stop?.()
+  else stopDesktopBridge = stop
 }
 
 watch(() => [settingsStore.settings.weatherCityNum, settingsStore.settings.showWeather], ([cityNum, visible]) => {
@@ -570,7 +670,8 @@ watch(() => [settingsStore.settings.timeSyncEnabled, settingsStore.settings.time
     timeSyncTimer = window.setInterval(syncNetworkTime, Math.max(5, Number(settingsStore.settings.timeSyncInterval) || 60) * 60 * 1000)
   }
 })
-watch(isSettings, open => { if (!open) window.setTimeout(showAutomaticPurePrompt, 180) })
+watch(isSettings, open => { if (!open) queueAutomaticPurePrompt(180) })
+watch(swarmLayout, showAutomaticPurePrompt)
 watch(isClassroom, open => { if (open) closePurePrompt() })
 watch([() => settingsStore.settings.idleReturnTime, desktopMini, isHomeworkWindow, isClassroom, isSettings, dialogActivity, purePromptOpen], scheduleIdleReturn)
 
@@ -615,7 +716,11 @@ onMounted(async () => {
   }
   document.addEventListener('visibilitychange', syncAfterVisibilityChange)
   window.addEventListener('focus', syncAfterVisibilityChange)
-  initializeDesktopWindow()
+  if (desktopAvailable.value) void initializeDesktopWindow()
+  else if (bootCurtain.value) {
+    const valid = () => !disposed && bootCurtain.value
+    void settleScene().then(() => swarm.replay({ valid })).finally(() => { bootCurtain.value = false })
+  }
   stopRightClick = event => event.preventDefault()
   document.addEventListener('contextmenu', stopRightClick)
   document.oncontextmenu = () => false
@@ -624,9 +729,6 @@ onMounted(async () => {
   if (settingsStore.settings.timeSyncEnabled && settingsStore.settings.timeSyncSource !== 'system') {
     syncNetworkTime()
     timeSyncTimer = window.setInterval(syncNetworkTime, Math.max(5, Number(settingsStore.settings.timeSyncInterval) || 60) * 60 * 1000)
-  }
-  if (!isHomeworkWindow.value) {
-    initDesktopBridge(handleDesktopUri).then(stop => { stopDesktopBridge = stop })
   }
   quotesStore.start()
   showControlsHandler()
@@ -668,9 +770,11 @@ onMounted(async () => {
     stopViewPaddingWatch = watch([() => isSettings.value || dialogActivity.value ? null : Math.floor(timeStore.now / 1000), () => route.path], () => nextTick(updateViewPadding))
   }
   syncWakeLock()
-  if (!isHomeworkWindow.value) window.setTimeout(showAutomaticPurePrompt, 550)
+  if (!isHomeworkWindow.value) queueAutomaticPurePrompt(550)
 })
 onUnmounted(() => {
+  disposed = true
+  launchController?.abort()
   timeSyncController?.abort()
   wakeLockDisposed = true
   wakeLock?.release?.().catch(() => {})
@@ -700,6 +804,7 @@ onUnmounted(() => {
   stopDesktopBridge?.()
   window.clearTimeout(noticeTimer)
   window.clearTimeout(idleReturnTimer)
+  window.clearTimeout(automaticPurePromptTimer)
   closePurePrompt()
   if (showControlsHandler) {
     window.removeEventListener('pointermove', showControlsHandler)
@@ -714,10 +819,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-root" :class="{ 'is-desktop': desktopAvailable, 'titlebar-hidden': desktopAvailable && fullscreenActive }">
+  <div class="app-root" :class="{ 'swarm-layout': swarmLayout, 'is-desktop': desktopAvailable, 'titlebar-hidden': desktopAvailable && fullscreenActive }">
     <div v-if="desktopAvailable" class="app-titlebar" role="banner"><div class="app-titlebar-drag" data-tauri-drag-region><span data-tauri-drag-region>CyTime 昔时时钟</span></div><div class="app-titlebar-controls"><button v-if="!desktopMini" type="button" aria-label="最小化" @click="minimizeWindow"><FluentIcon icon="subtract-16-regular" :width="16" /></button><button type="button" aria-label="最大化或解锁 Mini 模式" @click="maximizeWindow"><FluentIcon icon="maximize-16-regular" :width="16" /></button><button type="button" aria-label="关闭窗口" @click="closeWindow"><FluentIcon icon="dismiss-16-regular" :width="16" /></button></div></div>
-    <div class="app-shell" ref="shellRef" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, 'classroom-route': isClassroom, 'with-compact-boards': compactClock, 'short-stage': stageHeight < 700, 'compact-footer': stageWidth <= 620, [`window-mode-${desktopWindowMode}`]: desktopAvailable }" :data-display-layout="displayLayout" :data-effective-layout="classroomLayout ? 'classroom' : 'desktop'" :style="{ '--stage-read-scale': stageReadScale }">
-    <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息" data-swarm-persist>
+    <div class="app-shell" ref="shellRef" :inert="launchSettling" :class="{ 'settings-shell': isSettings, 'controls-hidden': controlsHidden, 'exam-mode': settingsStore.examModeActive, 'mini-mode': desktopMini, 'classroom-route': isClassroom, 'with-compact-boards': compactClock, 'short-stage': stageHeight < 700, 'compact-footer': stageWidth <= 620, [`window-mode-${desktopWindowMode}`]: desktopAvailable }" :data-display-layout="displayLayout" :data-effective-layout="classroomLayout ? 'classroom' : 'desktop'" :style="{ '--stage-read-scale': stageReadScale }">
+    <header v-if="!isSettings && !settingsStore.examModeActive" ref="statusDockRef" class="status-dock" aria-label="状态信息">
       <div v-if="settingsStore.settings.showWeather" class="status-weather"><strong>{{ weatherTemperature }}°</strong><FluentIcon icon="weather-partly-cloudy-day-20-regular" :width="18" /><span>{{ weatherStatus }}</span></div>
       <div v-if="settingsStore.settings.showDayProgress" class="status-progress"><span>今日进度</span><div class="status-progress-bar"><i :style="{ width: `${progress}%` }"></i></div><strong>{{ progress.toFixed(0) }}%</strong></div>
       <button v-if="settingsStore.settings.showImportantDays" ref="importantDaysTrigger" type="button" class="important-days-trigger" :aria-label="importantDaysLabel" :title="importantDaysLabel" @click="openImportantDays">
@@ -727,13 +832,13 @@ onUnmounted(() => {
         <small v-else>{{ importantDays.past.length ? '暂无倒计时' : '未添加' }}</small>
       </button>
     </header>
-    <nav v-if="!isSettings" ref="navRef" class="mode-nav" aria-label="模式切换" data-swarm-persist>
+    <nav v-if="!isSettings" ref="navRef" class="mode-nav" aria-label="模式切换">
       <RouterLink v-for="item in visibleNavItems" :key="item.path" :to="item.path" :class="{ active: item.path === '/classroom' ? isClassroom : route.path === item.path }" :aria-current="item.path === '/classroom' && isClassroom ? 'page' : undefined"><FluentIcon :icon="item.icon" :width="17" /><span>{{ item.label }}</span></RouterLink>
     </nav>
     <main class="clock-stage" :inert="isSettings" data-swarm-pageview><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><KeepAlive include="ClassroomView"><component :is="Component" /></KeepAlive></Transition></RouterView></main>
     <template v-if="!isSettings">
       <footer class="clock-footer">
-        <button type="button" class="footer-action footer-settings" aria-label="设置" title="设置" data-swarm-persist @click="openSettings()"><FluentIcon icon="settings-20-regular" :width="19" /></button>
+        <button type="button" class="footer-action footer-settings" aria-label="设置" title="设置" @click="openSettings()"><FluentIcon icon="settings-20-regular" :width="19" /></button>
         <div class="footer-center-actions"><button type="button" class="footer-action" :aria-label="fullscreenActive ? '退出全屏' : '全屏'" @click="toggleFullscreen"><FluentIcon :icon="fullscreenActive ? 'full-screen-minimize-20-regular' : 'full-screen-maximize-20-regular'" :width="19" /><span>{{ fullscreenActive ? '退出全屏' : '全屏' }}</span></button><button type="button" class="footer-action" :aria-label="settingsStore.examModeActive ? '退出纯净模式' : '纯净/考试模式'" @click="settingsStore.examModeActive ? exitExamMode() : schedulePurePrompt()"><FluentIcon :icon="settingsStore.examModeActive ? 'eye-20-filled' : 'eye-off-20-regular'" :width="19" /><span>{{ settingsStore.examModeActive ? '退出纯净' : '纯净模式' }}</span></button></div>
       </footer>
       <div class="app-meta">
@@ -749,6 +854,7 @@ onUnmounted(() => {
       <HomeworkPanel manage-float @close="homeworkManageOpen = false" />
     </div>
     </div>
+    <div v-if="bootCurtain" class="cytime-launch-cover" role="status" aria-label="正在准备昔时"><img src="/icon-192.png" alt="" width="68" height="68" /></div>
   </div>
 </template>
 

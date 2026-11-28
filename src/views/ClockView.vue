@@ -77,7 +77,7 @@ const quoteAttribution = computed(() => {
   <section ref="viewRef" class="clock-view" :class="{ 'compact-boards': compactBoards }" @click="handleStageClick">
     <div class="clock-aura aura-one"></div><div class="clock-aura aura-two"></div>
     <div class="clock-eyebrow">昔光涟涟，时不我待</div>
-    <time ref="clockRef" class="hero-clock" :style="{ '--clock-digits': clockParts.length * 2, '--clock-separators': clockParts.length - 1 }"><template v-for="(part, index) in clockParts" :key="index"><span v-for="(digit, digitIndex) in part.split('')" :key="digitIndex" class="hero-digit">{{ digit }}</span><b v-if="index < clockParts.length - 1">:</b></template></time>
+    <time ref="clockRef" class="hero-clock" data-swarm-live :style="{ '--clock-digits': clockParts.length * 2, '--clock-separators': clockParts.length - 1 }"><template v-for="(part, index) in clockParts" :key="index"><span v-for="(digit, digitIndex) in part.split('')" :key="digitIndex" class="hero-digit">{{ digit }}</span><b v-if="index < clockParts.length - 1">:</b></template></time>
     <div v-if="!settingsStore.examModeActive && (settingsStore.settings.showDate || ((settingsStore.settings.showLunar || settingsStore.settings.showAlmanac) && almanac))" class="hero-date-block">
       <div v-if="settingsStore.settings.showAlmanac && almanac" class="hero-almanac" :title="almanacTitle">
         <span class="almanac-item almanac-yi"><em>宜</em>{{ yiText || '无' }}</span>

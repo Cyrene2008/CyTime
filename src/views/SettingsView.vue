@@ -11,8 +11,11 @@ import { useWeatherStore } from '../stores/weather'
 import { useTimeStore } from '../stores/time'
 import { FILING_NAME, FILING_URL, QUOTE_API_DOCS } from '../config/branding'
 import { isLessonOnDate, lessonTimeToSeconds, scheduleWeekdays, scheduleWeekParity, scheduleWeekTypes } from '../services/schedule'
+import { normalizeSwarmPages, swarmSurfaces } from '../services/swarmScope'
+import { useDialogActivity } from '../composables/useDialogActivity'
 import DisplayCustomizationPanel from '../components/DisplayCustomizationPanel.vue'
 import ImportantDaysPanel from '../components/ImportantDaysPanel.vue'
+import FluentDateField from '../components/FluentDateField.vue'
 const QuoteSourcePanel = defineAsyncComponent(() => import('../components/QuoteSourcePanel.vue'))
 const LocalQuoteSourcePanel = defineAsyncComponent(() => import('../components/LocalQuoteSourcePanel.vue'))
 const DutySettingsPanel = defineAsyncComponent(() => import('../components/DutySettingsPanel.vue'))
@@ -33,6 +36,7 @@ let navSyncFrame = 0
 let navAnimation = null
 const draft = reactive({
   ...settingsStore.settings,
+  swarmPages: normalizeSwarmPages(settingsStore.settings.swarmPages),
   quoteLocalSources: JSON.parse(JSON.stringify(settingsStore.settings.quoteLocalSources || {})),
   quoteApiCategoryWeights: JSON.parse(JSON.stringify(settingsStore.settings.quoteApiCategoryWeights || {}))
 })
@@ -58,6 +62,47 @@ const backgroundOptions = [{ value: 'mica', label: '柔光' }, { value: 'acrylic
 const animationOptions = [{ value: 'typewriter', label: '自然打字' }, { value: 'crossfade', label: '平滑显示' }, { value: 'none', label: '直接显示' }]
 const typeSpeedOptions = [{ value: 'slow', label: '慢速' }, { value: 'standard', label: '标准' }, { value: 'fast', label: '快速' }]
 const weekdayOptions = [{ value: 1, label: '周一' }, { value: 2, label: '周二' }, { value: 3, label: '周三' }, { value: 4, label: '周四' }, { value: 5, label: '周五' }, { value: 6, label: '周六' }, { value: 0, label: '周日' }]
+const weekTypeOptions = Object.entries(scheduleWeekTypes).map(([value, label]) => ({ value, label }))
+function nameLessonPicker(element, { value }) {
+  const button = element.querySelector('button')
+  if (!button) return
+  // FluentSelect 1.0 omits the button type; opening it must not submit the lesson.
+  button.type = 'button'
+  button.setAttribute('aria-label', `${value}：${button.textContent.trim()}`)
+  return button
+}
+const lessonPickerCleanup = new WeakMap()
+const vLessonPicker = {
+  mounted(element, binding) {
+    const trigger = nameLessonPicker(element, binding)
+    if (!trigger) return
+    const time = trigger.classList.contains('time-picker-trigger')
+    const selector = time ? '.time-picker-dropdown' : '.fluent-select-dropdown'
+    function focusPopup(event) {
+      if (event.detail !== 0) return
+      const existing = new Set(document.querySelectorAll(selector))
+      requestAnimationFrame(() => {
+        const popup = [...document.querySelectorAll(selector)].find(node => !existing.has(node))
+        if (!popup || !trigger.isConnected) return
+        popup.querySelector(time ? 'select' : '.select-option.selected')?.focus()
+        popup.addEventListener('keydown', event => {
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          event.stopPropagation()
+          trigger.click()
+          trigger.focus()
+        })
+        popup.addEventListener('click', event => {
+          if (event.target.closest(time ? '.time-confirm' : '.select-option')) trigger.focus()
+        }, true)
+      })
+    }
+    trigger.addEventListener('click', focusPopup, true)
+    lessonPickerCleanup.set(element, () => trigger.removeEventListener('click', focusPopup, true))
+  },
+  updated: nameLessonPicker,
+  beforeUnmount(element) { lessonPickerCleanup.get(element)?.() }
+}
 const subjectOptions = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '政治', '地理', '其他'].map(value => ({ value, label: value }))
 const scheduleTabs = [{ value: 'overview', label: '概览' }, { value: 'library', label: '课程库' }, { value: 'daily', label: '日课程表' }]
 const scheduleTab = ref('overview')
@@ -123,6 +168,7 @@ const buildId = __BUILD_ID__
 const autostartMessage = ref('')
 const feedbackMessage = ref('')
 const uriHelpOpen = ref(false)
+useDialogActivity([uriHelpOpen, quoteConfigOpen, quoteManagerOpen])
 const uriMessage = ref('')
 const timeSyncMessage = ref('')
 const locating = ref(false)
@@ -506,7 +552,7 @@ onBeforeUnmount(() => {
           <span class="settings-kicker">基础功能</span><h2>课程表</h2><p class="settings-lead">查看本周安排，按天排课，或与其他应用交换 CSES 课表。</p>
           <section v-if="usesWeekCycle || contentStore.content.scheduleWeekOne" class="setting-card schedule-week">
             <div><h3>单双周</h3><p>选择学期第 1 周中的任意一天，昔时会从该周的周一开始计算。</p></div>
-            <label class="range-control">第 1 周日期<input type="date" class="setting-input" :value="contentStore.content.scheduleWeekOne" @change="contentStore.setScheduleWeekOne($event.target.value)" /></label>
+            <FluentDateField label="第 1 周日期" :model-value="contentStore.content.scheduleWeekOne" @change="contentStore.setScheduleWeekOne" />
             <p v-if="!contentStore.content.scheduleWeekOne" class="schedule-feedback" role="status">配置日期后，时钟才会显示单周或双周的课程。</p>
             <p v-else class="schedule-feedback" role="status">{{ currentWeekType ? `本周为${scheduleWeekTypes[currentWeekType]}。` : '第 1 周尚未开始。' }}</p>
           </section>
@@ -537,10 +583,10 @@ onBeforeUnmount(() => {
                 <div class="lesson-fields">
                   <label>课程名称<input ref="lessonNameField" v-model="lessonSubject" class="setting-input" placeholder="例如：数学" required /></label>
                   <label>教室（选填）<input v-model="lessonRoom" class="setting-input" placeholder="例如：实验楼 302" /></label>
-                  <label>上课时间<input v-model="lessonStart" class="setting-input" type="time" step="1" required /></label>
-                  <label>下课时间<input v-model="lessonEnd" class="setting-input" type="time" step="1" required /></label>
-                  <label>上课周次<select v-model="lessonWeeks" class="setting-input"><option v-for="(label, value) in scheduleWeekTypes" :key="value" :value="value">{{ label }}</option></select></label>
-                  <label v-if="editingLessonId">上课星期<select v-model.number="lessonWeekday" class="setting-input"><option v-for="day in weekdayOptions" :key="day.value" :value="day.value">{{ day.label }}</option></select></label>
+                  <div class="lesson-picker"><span>上课时间</span><FluentTimePicker v-model="lessonStart" v-lesson-picker="'上课时间'" show-seconds /></div>
+                  <div class="lesson-picker"><span>下课时间</span><FluentTimePicker v-model="lessonEnd" v-lesson-picker="'下课时间'" show-seconds /></div>
+                  <div class="lesson-picker"><span>上课周次</span><FluentSelect v-model="lessonWeeks" v-lesson-picker="'上课周次'" :options="weekTypeOptions" width="100%" /></div>
+                  <div v-if="editingLessonId" class="lesson-picker"><span>上课星期</span><FluentSelect v-model="lessonWeekday" v-lesson-picker="'上课星期'" :options="weekdayOptions" width="100%" /></div>
                 </div>
                 <details class="lesson-extras">
                   <summary>教师和课程简称（选填）</summary>
@@ -578,10 +624,10 @@ onBeforeUnmount(() => {
         </template>
 
         <template v-else-if="activePane === 'pointer'">
-          <span class="settings-kicker">视觉外观</span><h2>指针特效</h2><p class="settings-lead">预览主题光标，分别设置课堂工具的过场和绘制音效。</p>
+          <span class="settings-kicker">视觉外观</span><h2>指针特效</h2><p class="settings-lead">预览主题光标，设置绘制过场的范围和音效。</p>
           <section class="setting-card">
             <div class="setting-row">
-              <div><h3>指针特效</h3><p>内容区的普通箭头跟随主题色，文字和操作控件保留原有光标。用鼠标切到课堂工具首页时播放过场，按 Esc 可跳过。触屏和系统减少动态效果时保留原样。</p></div>
+              <div><h3>指针特效</h3><p>普通箭头跟随主题色。进入启用的页面或打开弹窗时可播放绘制，按 Esc 可跳过。触屏和系统减少动态效果时保留原样。</p></div>
               <button type="button" class="switch" role="switch" aria-label="指针特效" :class="{ on: draft.swarmEffects }" :aria-checked="draft.swarmEffects" @click="togglePointerEffects"><i></i></button>
             </div>
             <div class="setting-row">
@@ -589,6 +635,20 @@ onBeforeUnmount(() => {
               <button type="button" class="switch" role="switch" aria-label="绘制音效" :class="{ on: draft.swarmSound }" :aria-checked="draft.swarmSound" @click="draft.swarmSound = !draft.swarmSound"><i></i></button>
             </div>
             <div class="pointer-preview" data-swarm-preview><small>把鼠标移到这里的空白处预览</small></div>
+          </section>
+          <section class="setting-card">
+            <h3>生效范围</h3>
+            <fieldset class="swarm-scope-options" aria-label="指针生效范围">
+              <label><input v-model="draft.swarmScope" type="radio" value="global" name="swarm-scope" />全局生效</label>
+              <label><input v-model="draft.swarmScope" type="radio" value="selected" name="swarm-scope" />指定页面</label>
+            </fieldset>
+            <fieldset v-if="draft.swarmScope === 'selected'" class="swarm-scope-options" aria-label="启用指针特效的页面">
+              <label v-for="[key, label] in swarmSurfaces" :key="key"><input v-model="draft.swarmPages" type="checkbox" :value="key" />{{ label }}</label>
+            </fieldset>
+            <div class="setting-row">
+              <div><h3>纯净模式禁用</h3><p>开启后，纯净模式使用原生光标并跳过绘制。</p></div>
+              <button type="button" role="switch" class="switch" :class="{ on: draft.swarmDisablePure }" aria-label="纯净模式禁用指针特效" :aria-checked="draft.swarmDisablePure" @click="draft.swarmDisablePure = !draft.swarmDisablePure"><i></i></button>
+            </div>
           </section>
         </template>
 
@@ -635,7 +695,7 @@ onBeforeUnmount(() => {
         <section v-if="activePane === 'startup' && isDesktop()" class="setting-card setting-row uri-setting"><div><h3>链接调用</h3><p>允许其它应用通过链接打开昔时。</p><small v-if="uriMessage" class="inline-status">{{ uriMessage }}</small></div><div class="uri-setting-actions"><button type="button" class="subtle-button" @click="uriHelpOpen = true"><FluentIcon icon="info-20-regular" :width="16" />使用说明</button><button type="button" class="switch" :class="{ on: draft.uriRegistration }" :aria-pressed="draft.uriRegistration" @click="toggleUriRegistration"><i></i></button></div></section>
                </div></Transition></div><footer class="settings-actions"><span v-if="feedbackMessage" class="save-message">{{ feedbackMessage }}</span><button type="button" class="subtle-button action-button" @click="cancel"><FluentIcon icon="dismiss-20-regular" :width="15" /> 取消</button><button type="button" class="save-button action-button" @click="save"><FluentIcon icon="checkmark-20-regular" :width="15" /> 保存</button></footer><FluentToast ref="toastRef" /></div>
     </div>
-    <div v-if="uriHelpOpen" class="uri-help-layer" role="dialog" aria-modal="true" aria-label="链接调用说明" @click.self="uriHelpOpen = false"><section class="uri-help-modal"><header><div><span class="settings-kicker">桌面端</span><h2>链接调用说明</h2></div><button type="button" class="dialog-close" aria-label="关闭说明" @click="uriHelpOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></header><div class="uri-help-content"><p>用链接打开昔时，或控制计时任务。</p><dl><dt>打开应用</dt><dd><code>cytime://</code></dd><dt>窗口模式</dt><dd><code>cytime://?mode=mini</code>、<code>normal</code>、<code>max</code> 或 <code>full</code></dd><dt>切换页面</dt><dd><code>cytime://page/time</code><br /><code>cytime://page/countdown</code><br /><code>cytime://page/timer</code></dd><dt>创建倒计时</dt><dd><code>cytime://countdown?target=20261101121500</code><br /><code>cytime://countdown?length=1800</code></dd><dt>控制倒计时</dt><dd><code>cytime://task/countdown/pause</code><br /><code>cytime://task/countdown/continue</code><br /><code>cytime://task/countdown/stop</code></dd></dl></div><footer><button type="button" class="save-button" @click="uriHelpOpen = false">知道了</button></footer></section></div>
+    <div v-if="uriHelpOpen" class="uri-help-layer" role="dialog" aria-modal="true" aria-label="链接调用说明" @click.self="uriHelpOpen = false"><section class="uri-help-modal"><header><div><span class="settings-kicker">桌面端</span><h2>链接调用说明</h2></div><button type="button" class="dialog-close" aria-label="关闭说明" @click="uriHelpOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></header><div class="uri-help-content"><p>用链接打开昔时，或控制计时任务。</p><dl><dt>打开应用</dt><dd><code>cytime://</code></dd><dt>窗口模式</dt><dd><code>cytime://?mode=mini</code>、<code>normal</code>、<code>max</code> 或 <code>full</code></dd><dt>重新绘制</dt><dd><code>cytime://?mode=full&amp;replay&amp;sounds=1&amp;volume=0.1</code><br />窗口模式切换后等待 5 秒；<code>replay</code> 从头绘制当前页，<code>sounds</code> 和 <code>volume</code> 只对本次有效。音量范围 0–1，默认 0.1。</dd><dt>切换页面</dt><dd><code>cytime://page/time</code><br /><code>cytime://page/countdown</code><br /><code>cytime://page/timer</code></dd><dt>创建倒计时</dt><dd><code>cytime://countdown?target=20261101121500</code><br /><code>cytime://countdown?length=1800</code></dd><dt>控制倒计时</dt><dd><code>cytime://task/countdown/pause</code><br /><code>cytime://task/countdown/continue</code><br /><code>cytime://task/countdown/stop</code></dd></dl></div><footer><button type="button" class="save-button" @click="uriHelpOpen = false">知道了</button></footer></section></div>
     <div v-if="quoteConfigOpen" class="uri-help-layer" role="dialog" aria-modal="true" aria-label="在线语录分类" @click.self="quoteConfigOpen = false">
       <section class="uri-help-modal quote-config-modal">
         <header><div><span class="settings-kicker">在线语录</span><h2>语录分类</h2></div><button type="button" class="dialog-close" aria-label="关闭分类设置" @click="quoteConfigOpen = false"><FluentIcon icon="dismiss-20-regular" :width="18" /></button></header>
@@ -670,16 +730,16 @@ onBeforeUnmount(() => {
 .display-layout-options span { display: grid; gap: 4px; color: var(--text-primary); font-size: 13px; }
 .display-layout-options small { color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
 .schedule-week { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px 14px; }
-.schedule-week .range-control { margin: 0; width: 150px; }
+.schedule-week .fluent-date-field { width: min(165px, 100%); }
 .schedule-week .schedule-feedback { grid-column: 1 / -1; }
 .schedule-day-switch { display: grid; grid-template-columns: repeat(auto-fit, minmax(42px, 1fr)); gap: 5px; margin-bottom: 14px; }
 .schedule-day-switch button { padding-inline: 3px; }
 .schedule-day-switch button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: var(--accent-50); font-weight: 600; }
 .lesson-editor { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-subtle); }
 .lesson-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(132px, 100%), 1fr)); gap: 10px; margin: 10px 0; }
-.lesson-fields label { display: grid; gap: 5px; color: var(--text-secondary); font-size: 12px; }
-.lesson-fields .setting-input, .schedule-week .setting-input { width: 100%; min-width: 0; }
-.lesson-fields select { appearance: auto; }
+.lesson-fields :is(label, .lesson-picker) { display: grid; gap: 5px; min-width: 0; color: var(--text-secondary); font-size: 12px; }
+.lesson-fields .setting-input { width: 100%; min-width: 0; }
+.lesson-picker :deep(button) { min-height: 38px; }
 .lesson-extras { margin: 8px 0; color: var(--text-secondary); font-size: 12px; }
 .lesson-extras summary { width: fit-content; padding: 4px 0; cursor: pointer; }
 .schedule-feedback { color: var(--accent); font-size: 12px; line-height: 1.55; }

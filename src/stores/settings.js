@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { persistDesktopValue } from '../services/desktop.js'
 import { createBatchedPersist } from '../services/persistence.js'
 import { defaultQuoteApiEndpoint, migrateQuoteSettings, normalizeQuoteEndpoint, quoteApiRevision } from '../services/quoteEndpoints.js'
+import { normalizeSwarmPages } from '../services/swarmScope.js'
 
 const STORAGE_KEY = 'cytime.settings.v2'
 
@@ -11,6 +12,9 @@ export const defaultSettings = {
   accentColor: '',
   swarmEffects: true,
   swarmSound: false,
+  swarmScope: 'global',
+  swarmPages: normalizeSwarmPages(),
+  swarmDisablePure: true,
   startupMode: 'time',
   startupWindowMode: 'normal',
   idleReturnTime: false,
@@ -110,6 +114,9 @@ function readStoredSettings() {
     const merged = { ...base, ...migrateQuoteSettings(saved), quoteLocalSources: { ...base.quoteLocalSources, ...(saved.quoteLocalSources || {}) } }
     if (typeof merged.swarmEffects !== 'boolean') merged.swarmEffects = base.swarmEffects
     if (typeof merged.swarmSound !== 'boolean') merged.swarmSound = base.swarmSound
+    if (merged.swarmScope !== 'selected') merged.swarmScope = 'global'
+    merged.swarmPages = normalizeSwarmPages(merged.swarmPages)
+    if (typeof merged.swarmDisablePure !== 'boolean') merged.swarmDisablePure = base.swarmDisablePure
     if (merged.startupMode === 'clock') merged.startupMode = 'time'
     if (!['time', 'countdown', 'timer'].includes(merged.startupMode)) merged.startupMode = 'time'
     if (!['auto', 'desktop', 'classroom'].includes(merged.displayLayout)) merged.displayLayout = 'auto'

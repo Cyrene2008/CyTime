@@ -102,20 +102,21 @@ async function bootstrap() {
     routes: [
       { path: '/homework-manage', component: () => import('./views/HomeworkManageView.vue') },
       { path: '/', redirect: startupPath },
-      { path: '/time', component: ClockView },
+      { path: '/time', component: ClockView, meta: { swarmSurface: 'time' } },
       { path: '/clock', redirect: '/time' },
-      { path: '/countdown', component: () => import('./views/CountdownView.vue') },
-      { path: '/timer', component: () => import('./views/TimerView.vue') },
-      { path: '/classroom', component: () => import('./views/ClassroomView.vue'), meta: { classroom: true } },
-      { path: '/classroom-flow', component: () => import('./views/ClassroomFlowView.vue'), meta: { classroom: true } },
+      { path: '/countdown', component: () => import('./views/CountdownView.vue'), meta: { swarmSurface: 'countdown' } },
+      { path: '/timer', component: () => import('./views/TimerView.vue'), meta: { swarmSurface: 'timer' } },
+      { path: '/classroom', component: () => import('./views/ClassroomView.vue'), meta: { classroom: true, swarmSurface: 'classroom' } },
+      { path: '/classroom-flow', component: () => import('./views/ClassroomFlowView.vue'), meta: { classroom: true, swarmSurface: 'classroom' } },
       { path: '/settings', redirect: '/time' },
       // SPA fallback for unknown paths (incl. deep-link boot)
       { path: '/:pathMatch(.*)*', redirect: () => startupPath }
     ]
   })
 
-  const app = createApp(App).use(pinia).use(router)
+  const app = createApp(App, { desktopLaunch: desktopRuntime && !homeworkWindow }).use(pinia).use(router)
   for (const [name, component] of Object.entries({ FluentIcon, FluentSelect, FluentDatePicker, FluentTimePicker, FluentColorPicker, FluentToast })) app.component(name, component)
+  await router.isReady()
   app.mount('#app')
 
   if (homeworkWindow && router.currentRoute.value.path !== '/homework-manage') {

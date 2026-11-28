@@ -5,16 +5,19 @@ use std::net::{TcpListener, TcpStream};
 use std::process::Command;
 use std::time::Duration;
 use std::thread;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 use std::fs;
 use std::path::PathBuf;
 use serde_json::Value;
-use tauri::{include_image, AppHandle, Emitter, LogicalSize, Manager, Size, WindowEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{include_image, AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Size, WindowEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri_plugin_deep_link::DeepLinkExt;
 
 mod storage;
+mod uri_launch;
+
+use uri_launch::{UriLaunch, WindowMode};
 
 fn http_client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -28,7 +31,17 @@ fn http_client() -> Result<&'static reqwest::Client, String> {
     CLIENT.get().ok_or_else(|| "network client unavailable".to_string())
 }
 
-struct PendingUris(Arc<Mutex<Vec<String>>>);
+#[derive(Default)]
+struct PendingUris(Mutex<Vec<String>>);
+
+#[derive(Default)]
+struct MainWindowMode(Mutex<WindowPresentation>);
+
+#[derive(Clone, Copy, Default)]
+struct WindowPresentation {
+    mode: Option<WindowMode>,
+    restore_bounds: Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>,
+}
 
 fn is_homework_manage_uri(_uri: &str) -> bool {
     // TODO: 暂时禁用悬浮作业板（窗口出现约 1 秒后消失，后续再修）
@@ -240,12 +253,17 @@ fn desktop_set_uri_registration(app: AppHandle, enabled: bool) -> Result<bool, S
     Ok(enabled)
 }
 
-#[tauri::command]
-fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Result<(), String> {
-    let window = app.get_webview_window("main").ok_or_else(|| "main window unavailable".to_string())?;
-    let _ = window.unminimize();
-    match mode.as_str() {
-        "mini" => {
+fn main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
+    app.get_webview_window("main").ok_or_else(|| "main window unavailable".to_string())
+}
+
+fn apply_window_mode(app: &AppHandle, window: &WebviewWindow, mode: WindowMode) -> Result<(), String> {
+    let state = app.state::<MainWindowMode>();
+    let previous = *state.0.lock().map_err(|error| error.to_string())?;
+    let mut restore_bounds = None;
+    match mode {
+        WindowMode::Mini => {
+            let _ = window.set_focusable(false);
             window.set_resizable(false).map_err(|error| error.to_string())?;
             window.set_min_size(Some(Size::Logical(LogicalSize::new(960.0, 720.0)))).map_err(|error| error.to_string())?;
             window.set_max_size(Some(Size::Logical(LogicalSize::new(960.0, 720.0)))).map_err(|error| error.to_string())?;
@@ -255,9 +273,8 @@ fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Re
             window.center().ok();
             // Mini stays above other windows but must not steal keyboard focus (touch desks).
             let _ = window.set_always_on_top(true);
-            let _ = window.set_focusable(false);
         }
-        "normal" => {
+        WindowMode::Normal => {
             let _ = window.set_always_on_top(false);
             let _ = window.set_focusable(true);
             window.set_resizable(true).map_err(|error| error.to_string())?;
@@ -268,16 +285,27 @@ fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Re
             window.set_size(Size::Logical(LogicalSize::new(1600.0, 1000.0))).map_err(|error| error.to_string())?;
             window.center().ok();
         }
-        "max" => {
+        WindowMode::Max => {
             let _ = window.set_always_on_top(false);
             let _ = window.set_focusable(true);
             window.set_resizable(true).map_err(|error| error.to_string())?;
             window.set_min_size(Some(Size::Logical(LogicalSize::new(1280.0, 720.0)))).map_err(|error| error.to_string())?;
             window.set_max_size(None::<Size>).map_err(|error| error.to_string())?;
             window.set_fullscreen(false).map_err(|error| error.to_string())?;
-            window.maximize().map_err(|error| error.to_string())?;
+            let minimized = window.is_minimized().unwrap_or(false);
+            if !minimized && window.is_visible().map_err(|error| error.to_string())? {
+                window.maximize().map_err(|error| error.to_string())?;
+            } else if !minimized && !window.is_maximized().unwrap_or(false) {
+                // Tao on Windows calls ShowWindow(SW_MAXIMIZE), even on a hidden window.
+                // Layout against the monitor's work area now, and maximize when we reveal it.
+                if let Some(monitor) = window.current_monitor().ok().flatten().or_else(|| window.primary_monitor().ok().flatten()) {
+                    restore_bounds = previous.restore_bounds.or_else(|| Some((window.outer_position().ok()?, window.inner_size().ok()?)));
+                    window.set_position(monitor.work_area().position).map_err(|error| error.to_string())?;
+                    window.set_size(monitor.work_area().size).map_err(|error| error.to_string())?;
+                }
+            }
         }
-        "full" => {
+        WindowMode::Full => {
             let _ = window.set_always_on_top(false);
             let _ = window.set_focusable(true);
             window.set_resizable(true).map_err(|error| error.to_string())?;
@@ -287,17 +315,86 @@ fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Re
             window.unmaximize().map_err(|error| error.to_string())?;
             window.set_fullscreen(true).map_err(|error| error.to_string())?;
         }
-        _ => return Err("unknown window mode".to_string())
     }
-    if reveal.unwrap_or(true) {
-        window.show().map_err(|error| error.to_string())?;
-        let _ = window.unminimize();
-        // Mini: show without activating / taking focus.
-        if mode != "mini" {
-            window.set_focus().map_err(|error| error.to_string())?;
-        }
+    *state.0.lock().map_err(|error| error.to_string())? = WindowPresentation { mode: Some(mode), restore_bounds };
+    Ok(())
+}
+
+fn reveal_main_window(app: &AppHandle, window: &WebviewWindow) -> Result<(), String> {
+    let state = app.state::<MainWindowMode>();
+    let (mode, restore_bounds) = {
+        let mut presentation = state.0.lock().map_err(|error| error.to_string())?;
+        (presentation.mode, presentation.restore_bounds.take())
+    };
+    if let Some((position, size)) = restore_bounds {
+        // Keep the actual restore bounds when a staged maximized window is unmaximized later.
+        let _ = window.set_position(position);
+        let _ = window.set_size(size);
+    }
+    if window.is_minimized().unwrap_or(false) {
+        window.unminimize().map_err(|error| error.to_string())?;
+    }
+    if mode == Some(WindowMode::Max) && !window.is_maximized().unwrap_or(false) {
+        window.maximize().map_err(|error| error.to_string())?;
+    }
+    window.show().map_err(|error| error.to_string())?;
+    if mode != Some(WindowMode::Mini) {
+        window.set_focus().map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+fn handle_activation<'a>(app: &AppHandle, arguments: impl IntoIterator<Item = &'a str>) {
+    let mut auto_start = false;
+    let mut uris = Vec::new();
+    for argument in arguments {
+        if argument.starts_with("cytime://") {
+            uris.push(argument);
+        } else if argument == "--cyrene-auto-start" {
+            auto_start = true;
+        }
+    }
+    if uris.is_empty() {
+        if !auto_start {
+            let _ = main_window(app).and_then(|window| reveal_main_window(app, &window));
+        }
+        return;
+    }
+
+    // Queue links while the main WebView is starting. Live listeners receive the same raw URL.
+    let state = app.state::<PendingUris>();
+    if let Ok(mut pending) = state.0.lock() {
+        pending.extend(uris.iter().map(|uri| (*uri).to_owned()));
+    }
+    if uris.iter().any(|uri| is_homework_manage_uri(uri)) { open_homework_window(app); }
+    for uri in uris {
+        let _ = app.emit("cytime:open-url", uri);
+    }
+}
+
+#[tauri::command]
+fn desktop_window_mode(app: AppHandle, mode: String, reveal: Option<bool>) -> Result<(), String> {
+    let mode = WindowMode::parse(&mode).ok_or_else(|| "unknown window mode".to_string())?;
+    let window = main_window(&app)?;
+    apply_window_mode(&app, &window, mode)?;
+    if reveal.unwrap_or(true) { reveal_main_window(&app, &window)?; }
+    Ok(())
+}
+
+#[tauri::command]
+async fn desktop_prepare_uri(app: AppHandle, uri: String, fallback_mode: Option<String>) -> Result<UriLaunch, String> {
+    let launch = UriLaunch::parse(uri, fallback_mode.as_deref())?;
+    let Some(mode) = launch.mode else { return Ok(launch) };
+    let (sender, mut receiver) = tauri::async_runtime::channel(1);
+    let main_app = app.clone();
+    // Setters dispatch window work asynchronously when called off the main thread.
+    // Resolve the command only after the mode has been applied to the native window.
+    app.run_on_main_thread(move || {
+        let result = main_window(&main_app).and_then(|window| apply_window_mode(&main_app, &window, mode));
+        let _ = sender.try_send(result);
+    }).map_err(|error| error.to_string())?;
+    receiver.recv().await.ok_or_else(|| "main window preparation interrupted".to_string())??;
+    Ok(launch)
 }
 
 #[cfg(windows)]
@@ -399,12 +496,22 @@ fn desktop_window_action(app: AppHandle, action: String) -> Result<(), String> {
         if let Some(homework) = app.get_webview_window("homework") { let _ = homework.close(); }
         return Ok(());
     }
-    let window = app.get_webview_window("main").ok_or_else(|| "main window unavailable".to_string())?;
+    let window = main_window(&app)?;
     match action.as_str() {
         "minimize" => window.minimize(),
-        "maximize" => if window.is_maximized().map_err(|error| error.to_string())? { window.unmaximize() } else { window.maximize() },
+        "maximize" => {
+            let mode = if window.is_maximized().map_err(|error| error.to_string())? {
+                window.unmaximize().map_err(|error| error.to_string())?;
+                WindowMode::Normal
+            } else {
+                window.maximize().map_err(|error| error.to_string())?;
+                WindowMode::Max
+            };
+            *app.state::<MainWindowMode>().0.lock().map_err(|error| error.to_string())? = WindowPresentation { mode: Some(mode), restore_bounds: None };
+            return Ok(());
+        }
         "close" | "hide" => window.hide(),
-        "show" => window.show(),
+        "show" => return reveal_main_window(&app, &window),
         _ => return Err("unknown window action".to_string()),
     }.map_err(|error| error.to_string())
 }
@@ -444,7 +551,6 @@ mod network_tests {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let pending_uris = Arc::new(Mutex::new(Vec::<String>::new()));
     let activation_listener = match TcpListener::bind("127.0.0.1:39268") {
         Ok(listener) => Some(listener),
         Err(_) => {
@@ -456,27 +562,17 @@ pub fn run() {
         }
     };
     clear_stale_webview_cache();
-    let auto_start = std::env::args().any(|argument| argument == "--cyrene-auto-start");
     tauri::Builder::default()
-        .manage(PendingUris(pending_uris.clone()))
+        .manage(PendingUris::default())
+        .manage(MainWindowMode::default())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            let has_homework = argv.iter().any(|argument| is_homework_manage_uri(argument));
-            if has_homework {
-                open_homework_window(app);
-            } else if let Some(window) = app.get_webview_window("main") {
-                window.show().ok();
-                window.unminimize().ok();
-                window.set_focus().ok();
-            }
-            for argument in argv.iter().filter(|argument| argument.starts_with("cytime://")) {
-                app.emit("cytime:open-url", argument).ok();
-            }
+            handle_activation(app, argv.iter().map(String::as_str));
         }))
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![application_platform, desktop_startup_args, desktop_pending_uris, storage_read_all, storage_write, storage_apply, desktop_write_file, desktop_check_update, desktop_download_update, desktop_set_uri_registration, desktop_window_mode, desktop_set_autostart, desktop_fetch_json, desktop_fetch_network_time, desktop_window_action, desktop_open_homework])
+        .invoke_handler(tauri::generate_handler![application_platform, desktop_startup_args, desktop_pending_uris, desktop_prepare_uri, storage_read_all, storage_write, storage_apply, desktop_write_file, desktop_check_update, desktop_download_update, desktop_set_uri_registration, desktop_window_mode, desktop_set_autostart, desktop_fetch_json, desktop_fetch_network_time, desktop_window_action, desktop_open_homework])
         .setup(move |app| {
             #[cfg(target_os = "windows")]
             {
@@ -499,16 +595,8 @@ pub fn run() {
                     if let Ok((mut stream, _)) = listener.accept() {
                         let mut payload = String::new();
                         let _ = stream.read_to_string(&mut payload);
-                        if payload.trim().is_empty() {
-                            if let Some(window) = activation_app.get_webview_window("main") { window.show().ok(); window.unminimize().ok(); window.set_focus().ok(); }
-                        } else {
-                            let arguments = payload.lines().filter(|argument| argument.starts_with("cytime://")).map(String::from).collect::<Vec<_>>();
-                            if let Ok(mut pending) = pending_uris.lock() { pending.extend(arguments.iter().cloned()); }
-                            if arguments.iter().any(|argument| is_homework_manage_uri(argument)) {
-                                open_homework_window(&activation_app);
-                            }
-                            for argument in arguments { activation_app.emit("cytime:open-url", argument).ok(); }
-                        }
+                        let main_app = activation_app.clone();
+                        let _ = activation_app.run_on_main_thread(move || handle_activation(&main_app, payload.lines()));
                     }
                 });
             }
@@ -519,14 +607,14 @@ pub fn run() {
             }
             if let Some(window) = app.get_webview_window("main") {
                 window.set_title("CyTime 昔时时钟").ok();
-                if !auto_start { window.show().ok(); }
+                // The web app shows the main window once it has applied the startup mode.
                 let show = MenuItem::with_id(app, "show", "恢复窗口", true, None::<&str>)?;
                 let quit = MenuItem::with_id(app, "quit", "退出 CyTime", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&show, &quit])?;
                 TrayIconBuilder::new().icon(include_image!("icons/icon.png")).menu(&menu).on_menu_event(|app, event| {
                     if event.id() == "quit" { app.exit(0); }
                     if event.id() == "show" {
-                        if let Some(window) = app.get_webview_window("main") { window.show().ok(); window.unminimize().ok(); window.set_focus().ok(); }
+                        let _ = main_window(app).and_then(|window| reveal_main_window(app, &window));
                     }
                 }).build(app)?;
                 let close_handle = window.clone();

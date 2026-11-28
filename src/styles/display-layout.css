@@ -194,3 +194,23 @@ html[data-font="wengfaluosi"] .clock-view { --clock-unit: 19px; --clock-stretch:
 .exam-mode .clock-view:not(.compact-boards) { padding: 0 24px; }
 .exam-mode .clock-eyebrow { display: none; }
 :root { --cytime-swarm-accent: var(--accent); }
+
+.swarm-layout :is(.clock-view, .focus-view, .status-dock, .mode-nav) { transition: none !important; }
+.swarm-layout :is(.page-enter-active, .page-leave-active, .settings-overlay-enter-active, .settings-overlay-leave-active, .settings-sheet) { transition: none !important; }
+.swarm-layout :is(.page-enter-from, .page-leave-to, .settings-overlay-enter-from, .settings-overlay-leave-to, .settings-overlay-enter-from .settings-sheet, .settings-overlay-leave-to .settings-sheet) {
+  transform: none;
+  opacity: 1;
+}
+.swarm-layout :is(.focus-dialog, .uri-help-modal, .pure-prompt-card) { animation: none !important; }
+.cytime-launch-cover {
+  position: fixed;
+  z-index: 2147482999;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg-base);
+}
+.cytime-launch-cover img { width: 68px; height: 68px; }
+.swarm-scope-options { display: flex; flex-wrap: wrap; gap: 8px 20px; border: 0; margin: 14px 0; padding: 0; }
+.swarm-scope-options label { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; color: var(--text-secondary); }
+.swarm-scope-options input { accent-color: var(--accent); }

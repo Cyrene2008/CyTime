@@ -58,10 +58,10 @@ export async function fetchJson(url, externalSignal, { headers, timeoutMs = 1200
   }
 }
 
-export async function initDesktopBridge(onUri) {
+export async function initDesktopBridge(onUri, startupUri = '') {
   if (!isDesktop()) return () => {}
-  let lastUri = ''
-  let lastUriAt = 0
+  let lastUri = startupUri
+  let lastUriAt = startupUri ? Date.now() : 0
   const deliver = value => {
     const uri = String(value || '')
     const now = Date.now()
@@ -72,12 +72,12 @@ export async function initDesktopBridge(onUri) {
   }
   const unlistenDeepLink = await listen('deep-link://new-url', event => (Array.isArray(event.payload) ? event.payload : [event.payload]).forEach(deliver))
   const unlistenSingleInstance = await listen('cytime:open-url', event => deliver(event.payload))
-  try { (await invoke('desktop_pending_uris')).forEach(deliver) } catch {}
-  try {
-    const args = await invoke('desktop_startup_args')
-    args.filter(argument => argument.startsWith('cytime://')).forEach(deliver)
-  } catch {}
+  try { (await invoke('desktop_pending_uris')).filter(uri => uri !== startupUri).forEach(deliver) } catch {}
   return () => { unlistenDeepLink(); unlistenSingleInstance() }
+}
+
+export function prepareDesktopUri(uri, fallbackMode = null) {
+  return invoke('desktop_prepare_uri', { uri, fallbackMode })
 }
 
 export function setDesktopWindowMode(mode, reveal = true) {
