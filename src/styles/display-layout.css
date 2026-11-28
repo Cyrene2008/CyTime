@@ -1,4 +1,4 @@
-/* The side boards and the clock use the same space budget. */
+/* Side panels limit the clock's width without moving it off the screen's center. */
 .app-shell {
   --stage-width: calc(100vw / var(--ui-scale, 1));
   --stage-height: calc(100vh / var(--ui-scale, 1));
@@ -14,27 +14,23 @@
 }
 
 .clock-view {
-  --center-left: 24px;
-  --center-right: 24px;
-  --center-width: calc(var(--stage-width) - var(--center-left) - var(--center-right));
+  --center-inset: 24px;
+  --center-width: calc(var(--stage-width) - 2 * var(--center-inset));
   --detail-scale: calc(var(--stage-read-scale, 1) * var(--clock-detail-scale, 1));
   --clock-unit: 16px;
   --clock-stretch: 1;
   --clock-height-limit: .31;
 }
 html[data-font="wengfaluosi"] .clock-view { --clock-unit: 19px; --clock-stretch: 1.08; }
-.clock-view:not(.compact-boards) { padding-inline: var(--center-left) var(--center-right); }
-.clock-view.compact-boards { --center-left: 18px; --center-right: 18px; --clock-height-limit: .15; }
-.clock-view:not(.compact-boards):has(.homework-left) { --left-homework: calc(var(--board-edge) + var(--homework-side-width)); }
-.clock-view:not(.compact-boards):has(.homework-right) { --right-homework: calc(var(--board-edge) + var(--homework-side-width)); }
-.clock-view:not(.compact-boards):has(.blackboard-left) { --left-blackboard: calc(var(--board-edge) + var(--blackboard-side-width)); }
-.clock-view:not(.compact-boards):has(.blackboard-right) { --right-blackboard: calc(var(--board-edge) + var(--blackboard-side-width)); }
-.app-shell:has(.task-docks-left:not(.is-compact)) .clock-view:not(.compact-boards) { --left-task: calc(var(--stage-gutter) + var(--task-side-width)); }
-.app-shell:has(.task-docks-right:not(.is-compact)) .clock-view:not(.compact-boards) { --right-task: calc(var(--stage-gutter) + var(--task-side-width)); }
 .clock-view:not(.compact-boards) {
-  --center-left: max(24px, calc(max(var(--left-task, 0px), var(--left-homework, 0px), var(--left-blackboard, 0px)) + var(--stage-column-gap)));
-  --center-right: max(24px, calc(max(var(--right-task, 0px), var(--right-homework, 0px), var(--right-blackboard, 0px)) + var(--stage-column-gap)));
+  --board-clearance: calc(var(--board-edge) + var(--stage-column-gap));
+  --center-inset: max(24px, var(--homework-inset, 0px), var(--blackboard-inset, 0px), var(--task-inset, 0px));
+  padding-inline: var(--center-inset);
 }
+.clock-view.compact-boards { --center-inset: 18px; --clock-height-limit: .15; }
+.clock-view:not(.compact-boards):has(.homework-panel) { --homework-inset: calc(var(--board-clearance) + var(--homework-side-width)); }
+.clock-view:not(.compact-boards):has(.blackboard-panel) { --blackboard-inset: calc(var(--board-clearance) + var(--blackboard-side-width)); }
+.app-shell:has(.task-docks:not(.is-compact)) .clock-view:not(.compact-boards) { --task-inset: calc(var(--stage-gutter) + var(--task-side-width) + var(--stage-column-gap)); }
 .clock-view:not(.compact-boards) .homework-panel {
   --homework-reserved-top: max(var(--homework-safe-top, 80px), var(--stage-status-clearance, 80px));
   top: var(--homework-reserved-top);

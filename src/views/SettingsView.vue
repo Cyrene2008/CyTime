@@ -40,7 +40,7 @@ const activePane = ref('startup')
 const activeGroup = ref(null)
 const groups = [
   { id: 'workspace', label: '基础功能', description: '启动、显示与课程', icon: 'options-20-regular', items: [{ id: 'startup', label: '启动页面', icon: 'clock-20-regular' }, { id: 'display', label: '显示内容', icon: 'eye-20-regular' }, { id: 'countdown', label: '重要日', icon: 'timer-20-regular' }, { id: 'schedule', label: '课程表', icon: 'calendar-20-regular' }, { id: 'duty', label: '值日管理', icon: 'people-20-regular' }] },
-  { id: 'appearance', label: '视觉外观', description: '大屏模式、布局与字号', icon: 'color-20-regular', items: [{ id: 'overall', label: '显示与主题', icon: 'color-20-regular' }, { id: 'layout', label: '组件布局', icon: 'panel-left-20-regular' }, { id: 'customize', label: '字号与颜色', icon: 'paint-brush-20-regular' }] },
+  { id: 'appearance', label: '视觉外观', description: '大屏、主题、布局与指针', icon: 'color-20-regular', items: [{ id: 'overall', label: '显示与主题', icon: 'color-20-regular' }, { id: 'pointer', label: '指针特效', icon: 'cursor-click-20-regular' }, { id: 'layout', label: '组件布局', icon: 'panel-left-20-regular' }, { id: 'customize', label: '字号与颜色', icon: 'paint-brush-20-regular' }] },
   { id: 'environment', label: '环境提醒', description: '天气与城市', icon: 'alert-20-regular', items: [{ id: 'weather', label: '天气', icon: 'weather-partly-cloudy-day-20-regular' }, { id: 'location', label: '城市', icon: 'location-20-regular' }] },
   { id: 'content', label: '内容语录', description: '语录来源与样式', icon: 'book-open-20-regular', items: [{ id: 'refresh', label: '自动轮换', icon: 'arrow-clockwise-20-regular' }, { id: 'effects', label: '语录样式', icon: 'text-20-regular' }, { id: 'channels', label: '语录来源', icon: 'book-open-20-regular' }] },
   { id: 'system', label: '系统数据', description: '校时、备份与更新', icon: 'database-20-regular', items: [{ id: 'calibration', label: '时间校准', icon: 'time-and-weather-20-regular' }, { id: 'updates', label: '应用更新', icon: 'arrow-sync-20-regular' }, { id: 'data', label: '备份与数据', icon: 'database-20-regular' }] }
@@ -575,6 +575,10 @@ onBeforeUnmount(() => {
           </section>
           <section class="setting-card"><h3>主题</h3><div class="theme-options"><button type="button" class="theme-option dark-option" :class="{ selected: draft.theme === 'dark-peach' }" @click="draft.theme = 'dark-peach'"><i></i><span>深色桃粉</span></button><button type="button" class="theme-option light-option" :class="{ selected: draft.theme === 'light-peach' }" @click="draft.theme = 'light-peach'"><i></i><span>浅色桃粉</span></button></div><div class="appearance-fields"><label>数字字体<FluentSelect v-model="draft.fontFamily" :options="fontOptions" /></label><label>背景<FluentSelect v-model="draft.background" :options="backgroundOptions" /></label><label class="range-control">整体缩放 <strong>{{ draft.uiScale }}%</strong><input v-model.number="draft.uiScale" type="range" min="50" max="200" step="5" /></label></div><div class="accent-row"><label class="color-field"><span>主题色</span><FluentColorPicker v-model="draft.accentColor" :showPresets="false" /></label><button type="button" class="subtle-button" @click="draft.accentColor = ''">恢复默认主题色</button></div></section>
           <section class="setting-card setting-row"><div><h3>沉浸模式</h3><p>隐藏小组件边框，让页面更简洁。</p></div><button type="button" class="switch" :class="{ on: draft.immersiveMode }" :aria-pressed="draft.immersiveMode" @click="draft.immersiveMode = !draft.immersiveMode"><i></i></button></section>
+        </template>
+
+        <template v-else-if="activePane === 'pointer'">
+          <span class="settings-kicker">视觉外观</span><h2>指针特效</h2><p class="settings-lead">预览主题光标，分别设置课堂工具的过场和绘制音效。</p>
           <section class="setting-card">
             <div class="setting-row">
               <div><h3>指针特效</h3><p>内容区的普通箭头跟随主题色，文字和操作控件保留原有光标。用鼠标切到课堂工具首页时播放过场，按 Esc 可跳过。触屏和系统减少动态效果时保留原样。</p></div>
